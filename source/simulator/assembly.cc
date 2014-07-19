@@ -859,6 +859,8 @@ namespace aspect
         material_model_inputs.temperature);
     input_finite_element_values[introspection.extractors.pressure].get_function_values(input_solution,
         material_model_inputs.pressure);
+    input_finite_element_values[introspection.extractors.velocities].get_function_values(input_solution,
+        material_model_inputs.velocity);
 
     // only the viscosity in the material can depend on the strain_rate
     // if this is not needed, we can same some time here. By setting the

@@ -501,6 +501,12 @@ namespace aspect
            */
           std::vector<double> pressure;
           /**
+           * Velocity values at the points given in the #position vector.
+           * This value is mostly important in the case of determining
+           * whether material crossed a certain region (e.g. a phase boundary)
+           */
+          std::vector<Tensor<1,dim> > velocity;
+          /**
            * Values of the compositional fields at the points given in the
            * #position vector: composition[i][c] is the compositional field c
            * at point i.
