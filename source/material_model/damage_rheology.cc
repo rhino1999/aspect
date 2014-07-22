@@ -88,11 +88,10 @@ namespace aspect
       const double m = grain_growth_exponent;
       double grain_size_growth = grain_growth_rate_constant / (m * pow(grain_size,m-1))
                                * exp(- (grain_growth_activation_energy + pressure * grain_growth_activation_volume)
-                                       / gas_constant * temperature)
+                                     / (gas_constant * temperature))
                                * this->get_timestep();
 
       // grain size reduction in dislocation creep regime
-      // TODO: this is after eq. (7) from the Behn (2009) paper, they use the dislocation strain rate there
       const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
       double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
 
@@ -100,8 +99,8 @@ namespace aspect
                                            * viscosity(temperature, pressure, compositional_fields, strain_rate, position)
                                            / dislocation_viscosity(temperature, pressure, second_strain_rate_invariant, position);
 
-      double grain_size_reduction = reciprocal_required_strain * second_strain_rate_invariant * grain_size
-                                  * this->get_timestep();
+      double grain_size_reduction = std::min(reciprocal_required_strain * dislocation_strain_rate * grain_size
+                                  * this->get_timestep(), 0.5 * grain_size);
 
       // reduce grain size to recrystallized_grain_size when crossing phase transitions
       // if the distance in radial direction a grain moved compared to the last time step
@@ -121,13 +120,13 @@ namespace aspect
                - phase_function(old_position, temperature, pressure, phase_index) == 1)
               crossed_transition = true;
           if (crossed_transition)
-            phase_grain_size_reduction = -compositional_fields[phase_index] + recrystallized_grain_size;
+            phase_grain_size_reduction = compositional_fields[phase_index] - recrystallized_grain_size;
         }
       else if (this->introspection().name_for_compositional_index(phase_index) == "pyroxene_grain_size")
         {
           phase_grain_size_reduction = 0.0;
         }
-      return grain_size_growth + grain_size_reduction + phase_grain_size_reduction;
+      return /*grain_size_growth*/ - grain_size_reduction; //- phase_grain_size_reduction;
     }
 
     template <int dim>
