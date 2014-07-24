@@ -231,6 +231,8 @@ namespace aspect
             {
               in.pressure[i] = fe_vals[i][introspection.component_indices.pressure];
               in.temperature[i] = fe_vals[i][introspection.component_indices.temperature];
+              for (unsigned int k = 0; k < dim; ++k)
+                in.velocity[i][k]=fe_vals[i][introspection.component_indices.velocities[k]];
               for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
                 in.composition[i][c] = fe_vals[i][introspection.component_indices.compositional_fields[c]];
               in.position[i] = q_points[i];

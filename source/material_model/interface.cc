@@ -296,6 +296,7 @@ namespace aspect
       position.resize(n_points);
       temperature.resize(n_points);
       pressure.resize(n_points);
+      velocity.resize(n_points);
       composition.resize(n_points);
       for (unsigned int i=0; i<n_points; ++i)
         composition[i].resize(n_comp);

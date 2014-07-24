@@ -823,6 +823,8 @@ namespace aspect
             scratch.explicit_material_model_inputs.temperature[q] = (scratch.old_temperature_values[q] + scratch.old_old_temperature_values[q]) / 2;
             scratch.explicit_material_model_inputs.position[q] = scratch.finite_element_values.quadrature_point(q);
             scratch.explicit_material_model_inputs.pressure[q] = (scratch.old_pressure[q] + scratch.old_old_pressure[q]) / 2;
+            scratch.explicit_material_model_inputs.velocity[q] = (scratch.old_velocity_values[q] + scratch.old_old_velocity_values[q]) / 2;
+
             for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
               scratch.explicit_material_model_inputs.composition[q][c] = (scratch.old_composition_values[c][q] + scratch.old_old_composition_values[c][q]) / 2;
             scratch.explicit_material_model_inputs.strain_rate[q] = (scratch.old_strain_rates[q] + scratch.old_old_strain_rates[q]) / 2;
@@ -859,6 +861,8 @@ namespace aspect
         material_model_inputs.temperature);
     input_finite_element_values[introspection.extractors.pressure].get_function_values(input_solution,
         material_model_inputs.pressure);
+    input_finite_element_values[introspection.extractors.velocities].get_function_values(input_solution,
+        material_model_inputs.velocity);
 
     // only the viscosity in the material can depend on the strain_rate
     // if this is not needed, we can same some time here. By setting the
@@ -1504,7 +1508,7 @@ namespace aspect
       }
     else
       {
-        compute_material_model_input_values (old_solution,
+        compute_material_model_input_values (current_linearization_point,
                                              scratch.finite_element_values,
                                              true,
                                              scratch.material_model_inputs);

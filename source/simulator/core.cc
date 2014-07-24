@@ -1326,6 +1326,10 @@ namespace aspect
               build_advection_preconditioner(AdvectionField::composition(c),
                                              C_preconditioner);
               solve_advection(AdvectionField::composition(c));
+            }
+
+          for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
+            {
               current_linearization_point.block(introspection.block_indices.compositional_fields[c])
                 = solution.block(introspection.block_indices.compositional_fields[c]);
             }
@@ -1418,6 +1422,10 @@ namespace aspect
                                                  C_preconditioner);
                   composition_residual[c]
                     = solve_advection(AdvectionField::composition(c));
+                }
+
+              for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
+                {
                   current_linearization_point.block(introspection.block_indices.compositional_fields[c])
                     = solution.block(introspection.block_indices.compositional_fields[c]);
                 }
@@ -1490,6 +1498,10 @@ namespace aspect
               build_advection_preconditioner (AdvectionField::composition (c),
                                               C_preconditioner);
               solve_advection(AdvectionField::composition(c));
+            }
+
+          for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
+            {
               current_linearization_point.block(introspection.block_indices.compositional_fields[c])
                 = solution.block(introspection.block_indices.compositional_fields[c]);
             }

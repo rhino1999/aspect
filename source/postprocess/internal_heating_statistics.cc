@@ -75,6 +75,9 @@ namespace aspect
             fe_values[this->introspection().extractors.pressure]
                       .get_function_values (this->get_solution(),
                                             in.pressure);
+            fe_values[this->introspection().extractors.velocities]
+                      .get_function_values (this->get_solution(),
+                                            in.velocity);
             for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
               fe_values[this->introspection().extractors.compositional_fields[c]]
               .get_function_values(this->get_solution(),
