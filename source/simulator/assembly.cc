@@ -1508,7 +1508,7 @@ namespace aspect
       }
     else
       {
-        compute_material_model_input_values (old_solution,
+        compute_material_model_input_values (current_linearization_point,
                                              scratch.finite_element_values,
                                              true,
                                              scratch.material_model_inputs);
