@@ -22,6 +22,8 @@
 #include <aspect/material_model/damage_rheology.h>
 #include <deal.II/base/parameter_handler.h>
 
+#include <iostream>
+
 using namespace dealii;
 
 namespace aspect
@@ -80,53 +82,93 @@ namespace aspect
                             const SymmetricTensor<2,dim> &strain_rate,
                             const Tensor<1,dim>          &velocity,
                             const Point<dim>             &position,
-                            const double                  phase_index) const
+                            const unsigned int            phase_index) const
     {
-      const double grain_size = compositional_fields[phase_index];
+      // we want to iterate over the grain size evolution here, as we solve in fact an ordinary differential equation
+      // and it is not correct to use the starting grain size (and introduces instabilities)
+      const double original_grain_size = compositional_fields[phase_index];
+      double grain_size = original_grain_size;
+      double grain_size_change = 0.0;
 
-      // grain size growth due to Ostwald ripening
-      const double m = grain_growth_exponent;
-      double grain_size_growth = grain_growth_rate_constant / (m * pow(grain_size,m-1))
-                               * exp(- (grain_growth_activation_energy + pressure * grain_growth_activation_volume)
-                                     / (gas_constant * temperature))
-                               * this->get_timestep();
-
-      // grain size reduction in dislocation creep regime
-      const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
-      double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
-
-      const double dislocation_strain_rate = second_strain_rate_invariant
-                                           * viscosity(temperature, pressure, compositional_fields, strain_rate, position)
-                                           / dislocation_viscosity(temperature, pressure, second_strain_rate_invariant, position);
-
-      double grain_size_reduction = std::min(reciprocal_required_strain * dislocation_strain_rate * grain_size
-                                  * this->get_timestep(), 0.5 * grain_size);
-
-      // reduce grain size to recrystallized_grain_size when crossing phase transitions
-      // if the distance in radial direction a grain moved compared to the last time step
-      // is crossing a phase transition, reduce grain size
-      double phase_grain_size_reduction = 0.0;
-      if (this->introspection().name_for_compositional_index(phase_index) == "olivine_grain_size"
-          &&
-          this->get_timestep_number() > 0)
+      do
         {
-          const Point<dim> moved_distance(velocity * this->get_timestep());
-          const Point<dim> old_position = position - moved_distance;
+          grain_size = original_grain_size + 0.5 * (grain_size_change + grain_size - original_grain_size);
 
-          // check if material has crossed any phase transition, if yes, reset grain size
-          bool crossed_transition = false;
-          for (unsigned int phase_index=0;phase_index<transition_depths.size();++phase_index)
-            if(phase_function(position, temperature, pressure, phase_index)
-               - phase_function(old_position, temperature, pressure, phase_index) == 1)
-              crossed_transition = true;
-          if (crossed_transition)
-            phase_grain_size_reduction = compositional_fields[phase_index] - recrystallized_grain_size;
+          // grain size growth due to Ostwald ripening
+          const double m = grain_growth_exponent;
+          const double grain_size_growth = grain_growth_rate_constant / (m * pow(grain_size,m-1))
+                                   * exp(- (grain_growth_activation_energy + pressure * grain_growth_activation_volume)
+                                       / (gas_constant * temperature))
+                                       * this->get_timestep();
+
+          // grain size reduction in dislocation creep regime
+          const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
+          double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
+
+          const double dislocation_strain_rate = second_strain_rate_invariant
+              * viscosity(temperature, pressure, compositional_fields, strain_rate, position)
+          / dislocation_viscosity(temperature, pressure, second_strain_rate_invariant, position);
+
+          double grain_size_reduction = 0.0;
+
+          if (use_paleowattmeter)
+            {
+              // paleowattmeter: Austin and Evans (2007): Paleowattmeters: A scaling relation for dynamically recrystallized grain size. Geology 35, 343-346
+              const double stress = 2.0 * second_strain_rate_invariant * viscosity(temperature, pressure, compositional_fields, strain_rate, position);
+              grain_size_reduction = stress * boundary_area_change_work_fraction * dislocation_strain_rate * pow(grain_size,2)
+              / (geometric_constant * grain_boundary_energy)
+              * this->get_timestep();
+            }
+          else
+            {
+              // paleopiezometer: Hall and Parmentier (2003): Influence of grain size evolution on convective instability. Geochem. Geophys. Geosyst., 4(3).
+              grain_size_reduction = std::min(reciprocal_required_strain * dislocation_strain_rate * grain_size
+                                              * this->get_timestep(), 0.9 * grain_size);
+            }
+
+          // grain size reduction in dislocation creep regime (paleowattmeter)
+          const double stress = 2.0 * second_strain_rate_invariant * viscosity(temperature, pressure, compositional_fields, strain_rate, position);
+          grain_size_reduction = stress * boundary_area_change_work_fraction * dislocation_strain_rate * pow(grain_size,2)
+          / (geometric_constant * grain_boundary_energy);
+
+
+          // reduce grain size to recrystallized_grain_size when crossing phase transitions
+          // if the distance in radial direction a grain moved compared to the last time step
+          // is crossing a phase transition, reduce grain size
+          double phase_grain_size_reduction = 0.0;
+          if (this->introspection().name_for_compositional_index(phase_index) == "olivine_grain_size"
+              &&
+              this->get_timestep_number() > 0)
+            {
+              const Point<dim> moved_distance(velocity * this->get_timestep());
+              const Point<dim> old_position = position - moved_distance;
+
+              // check if material has crossed any phase transition, if yes, reset grain size
+              bool crossed_transition = false;
+              for (unsigned int phase_index=0;phase_index<transition_depths.size();++phase_index)
+                if(phase_function(position, temperature, pressure, phase_index)
+                    - phase_function(old_position, temperature, pressure, phase_index) == 1)
+                  crossed_transition = true;
+              if (crossed_transition)
+                phase_grain_size_reduction = compositional_fields[phase_index] - recrystallized_grain_size;
+            }
+          else if (this->introspection().name_for_compositional_index(phase_index) == "pyroxene_grain_size")
+            {
+              phase_grain_size_reduction = 0.0;
+            }
+
+          // TODO: assert grain size > 0
+          grain_size_change = grain_size_growth - grain_size_reduction - phase_grain_size_reduction;
+          std::cout << "Old grain size is " << grain_size << " and new one is "<< original_grain_size + grain_size_change << "\n";
         }
-      else if (this->introspection().name_for_compositional_index(phase_index) == "pyroxene_grain_size")
-        {
-          phase_grain_size_reduction = 0.0;
-        }
-      return /*grain_size_growth*/ - grain_size_reduction; //- phase_grain_size_reduction;
+      while (std::abs((grain_size - (original_grain_size + grain_size_change)) / grain_size) > 0.05);
+      std::cout << "Done.\n";
+
+      //  Assert (grain_size + grain_size_change >= 1.e-6, ExcMessage ("Error: The grain size should not be smaller than 1e-6 m."));
+      if (original_grain_size + grain_size_change < 1.e-5)
+        std::cout << "Grain size is " << original_grain_size + grain_size_change << "! It needs to be larger than 1e-5.";
+
+      return grain_size_change;
     }
 
     template <int dim>
@@ -199,11 +241,15 @@ namespace aspect
       // TODO: make this more general, for more phases we have to average grain size somehow
       // TODO: default when field is not given & warning
       const std::string field_name = "olivine_grain_size";
-      const double grain_size = this->introspection().compositional_name_exists(field_name)
+      double grain_size = this->introspection().compositional_name_exists(field_name)
                               ?
                               composition[this->introspection().compositional_index_for_name(field_name)]
                               :
                               0.0;
+
+      //TODO: add assert
+      /*if (this->get_timestep_number() > 0)
+        Assert (grain_size >= 1.e-6, ExcMessage ("Error: The grain size should not be smaller than 1e-6 m."));*/
 
       const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
       double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
@@ -331,7 +377,9 @@ namespace aspect
     {
       for (unsigned int i=0; i<in.position.size(); ++i)
         {
-          out.viscosities[i] = viscosity(in.temperature[i], in.pressure[i], in.composition[i], in.strain_rate[i], in.position[i]);
+          if (in.strain_rate.size() > 0)
+            out.viscosities[i] = viscosity(in.temperature[i], in.pressure[i], in.composition[i], in.strain_rate[i], in.position[i]);
+
           out.densities[i] = density(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
           out.thermal_expansion_coefficients[i] = thermal_alpha;
           out.specific_heat[i] = reference_specific_heat;
@@ -380,7 +428,7 @@ namespace aspect
                              "Dimensionless prefactor. With a value of 1.0 (the default) the "
                              "viscosity does not depend on the composition.");
           prm.declare_entry ("Compositional density difference", "100.0",
-                             Patterns::Double (0),
+                             Patterns::Double (),
                              "Density excess of the first compositional field."
                              "Units: $kg/m^3$");
           prm.declare_entry ("Thermal conductivity", "4.7",
@@ -451,6 +499,24 @@ namespace aspect
                              Patterns::Double (0),
                              "The grain size $d_{ph}$ to that a phase will be reduced to when crossing a phase transition. "
                              "Units: m.");
+          prm.declare_entry ("Use paleowattmeter", "true",
+                             Patterns::Bool (),
+                             "A flag indicating whether the computation should be use the "
+                             "paleowattmeter approach of Austin and Evans (2007) for grain size reduction "
+                             "in the dislocation creep regime (if true) or the paleopiezometer aprroach "
+                             "from Hall and Parmetier (2003) (if false).");
+          prm.declare_entry ("Average specific grain boundary energy", "1.0",
+                             Patterns::Double (0),
+                             "The average specific grain boundary energy $\\gamma$. "
+                             "Units: J/m^2.");
+          prm.declare_entry ("Work fraction for boundary area change", "0.1",
+                             Patterns::Double (0),
+                             "The fraction $\\chi$ of work done by dislocation creep to change the grain boundary area. "
+                             "Units: J/m^2.");
+          prm.declare_entry ("Geometric constant", "3",
+                             Patterns::Double (0),
+                             "Geometric constant $c$ used in the paleowattmeter grain size reduction law. "
+                             "Units: none.");
           prm.declare_entry ("Dislocation creep exponent", "3.5",
                              Patterns::Double (0),
                              "Power-law exponent $n_{dis}$ for dislocation creep. "
@@ -544,6 +610,11 @@ namespace aspect
           grain_growth_exponent                     = prm.get_double ("Grain growth exponent");
           reciprocal_required_strain                = prm.get_double ("Reciprocal required strain");
           recrystallized_grain_size                 = prm.get_double ("Recrystallized grain size");
+
+          use_paleowattmeter                        = prm.get_bool ("Use paleowattmeter");
+          grain_boundary_energy                     = prm.get_double ("Average specific grain boundary energy");
+          boundary_area_change_work_fraction        = prm.get_double ("Work fraction for boundary area change");
+          geometric_constant                        = prm.get_double ("Geometric constant");
 
           // rheology parameters
           dislocation_creep_exponent                = prm.get_double ("Dislocation creep exponent");

@@ -164,6 +164,12 @@ namespace aspect
         double reciprocal_required_strain;
         double recrystallized_grain_size;
 
+        // for paleowattmeter
+        bool use_paleowattmeter;
+        double grain_boundary_energy;
+        double boundary_area_change_work_fraction;
+        double geometric_constant;
+
         // rheology parameters
         double dislocation_creep_exponent;
         double dislocation_activation_energy;
@@ -214,7 +220,7 @@ namespace aspect
                                 const SymmetricTensor<2,dim> &strain_rate,
                                 const Tensor<1,dim>          &velocity,
                                 const Point<dim>             &position,
-                                const double                  phase_index) const;
+                                const unsigned int            phase_index) const;
 
         /**
          * Function that defines the phase transition interface
