@@ -844,11 +844,13 @@ namespace aspect
                   is_element( (*p).first.second, parameters.zero_velocity_boundary_indicators ) == false &&
                   is_element( (*p).first.first, parameters.tangential_velocity_boundary_indicators ) == false &&
                   is_element( (*p).first.second, parameters.tangential_velocity_boundary_indicators ) == false &&
+                  is_element( (*p).first.first, parameters.fixed_composition_boundary_indicators ) == false &&
+                  is_element( (*p).first.second, parameters.fixed_composition_boundary_indicators ) == false &&
                   parameters.prescribed_velocity_boundary_indicators.find( (*p).first.first)
                   == parameters.prescribed_velocity_boundary_indicators.end() &&
                   parameters.prescribed_velocity_boundary_indicators.find( (*p).first.second)
                   == parameters.prescribed_velocity_boundary_indicators.end(),
-                  ExcInternalError());
+                  ExcMessage ("Error: The boundary conditions can not be prescribed on periodic boundaries."));
 
 #if (DEAL_II_MAJOR*100 + DEAL_II_MINOR) >= 801
           DoFTools::make_periodicity_constraints(dof_handler,
