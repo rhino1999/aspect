@@ -89,23 +89,23 @@ namespace aspect
       const double original_grain_size = compositional_fields[phase_index];
       double grain_size = original_grain_size;
       double grain_size_change = 0.0;
-      const double timestep = (this->get_timestep_number() > 0
-                               ?
-                               0.03 / 0.01 * 100000 / 32.0 * 3600 * 24 * 365.25
-                               :
-                               0.0);
-          //=this->get_timestep();
+      const double timestep = this->get_timestep();
+      //(this->get_timestep_number() > 0 ? 0.1 * 100000 / 0.01 / 32 * 3600 * 24 * 365.25 : 0.0); //
+      double grain_growth_timestep = 1000 * 3600 * 24 * 365.25; // 500 yrs
+      double time = -grain_growth_timestep;
 
       do
         {
-          grain_size = original_grain_size + 0.5 * (grain_size_change + grain_size - original_grain_size); //arithmetic mean
+          time += grain_growth_timestep;
+          if(timestep - time < grain_growth_timestep)
+            grain_growth_timestep = timestep - time;
 
           // grain size growth due to Ostwald ripening
           const double m = grain_growth_exponent;
           const double grain_size_growth = grain_growth_rate_constant / (m * pow(grain_size,m-1))
                                    * exp(- (grain_growth_activation_energy + pressure * grain_growth_activation_volume)
                                        / (gas_constant * temperature))
-                                       * timestep;
+                                       * grain_growth_timestep;
 
           // grain size reduction in dislocation creep regime
           const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
@@ -116,33 +116,20 @@ namespace aspect
               / dislocation_viscosity(temperature, pressure, second_strain_rate_invariant, position);
 
           double grain_size_reduction = 0.0;
-          double reduction_grain_size = grain_size;
 
-          if (this->get_timestep_number() > 0) do
+          if (use_paleowattmeter)
             {
-              reduction_grain_size = (abs(grain_size_reduction) < std::numeric_limits<double>::min())
-                                     ?
-                                     grain_size
-                                     :
-                                     grain_size - 0.5 * (grain_size_reduction + grain_size - reduction_grain_size); //harmonic mean
-              if (use_paleowattmeter)
-                {
-                  // paleowattmeter: Austin and Evans (2007): Paleowattmeters: A scaling relation for dynamically recrystallized grain size. Geology 35, 343-346
-                  const double stress = 2.0 * second_strain_rate_invariant * viscosity(temperature, pressure, compositional_fields, strain_rate, position);
-                  grain_size_reduction = stress * boundary_area_change_work_fraction * dislocation_strain_rate * pow(reduction_grain_size,2)
-                  / (geometric_constant * grain_boundary_energy)
-                  * timestep;
-                }
-              else
-                {
-                  // paleopiezometer: Hall and Parmentier (2003): Influence of grain size evolution on convective instability. Geochem. Geophys. Geosyst., 4(3).
-                  grain_size_reduction = reciprocal_required_strain * dislocation_strain_rate * reduction_grain_size * timestep;
-                }
-
-                std::cout << "Grain size reduction is " << grain_size_reduction << "! \n"
-                << "reduction grain size is " << reduction_grain_size << " and grain size is " << grain_size << "! \n";
+              // paleowattmeter: Austin and Evans (2007): Paleowattmeters: A scaling relation for dynamically recrystallized grain size. Geology 35, 343-346
+              const double stress = 2.0 * second_strain_rate_invariant * viscosity(temperature, pressure, compositional_fields, strain_rate, position);
+              grain_size_reduction = stress * boundary_area_change_work_fraction * dislocation_strain_rate * pow(grain_size,2)
+              / (geometric_constant * grain_boundary_energy)
+              * grain_growth_timestep;
             }
-          while (std::abs(((grain_size - grain_size_reduction) - reduction_grain_size) / reduction_grain_size) > 0.001);
+          else
+            {
+              // paleopiezometer: Hall and Parmentier (2003): Influence of grain size evolution on convective instability. Geochem. Geophys. Geosyst., 4(3).
+              grain_size_reduction = reciprocal_required_strain * dislocation_strain_rate * grain_size * grain_growth_timestep;
+            }
 
           // reduce grain size to recrystallized_grain_size when crossing phase transitions
           // if the distance in radial direction a grain moved compared to the last time step
@@ -174,11 +161,11 @@ namespace aspect
 
           // TODO: assert grain size > 0
           grain_size_change = grain_size_growth - grain_size_reduction - phase_grain_size_reduction;
-
-//          std::cout << "Old grain size is " << grain_size << " and new one is "<< original_grain_size + grain_size_change << "\n";
+          grain_size += grain_size_change;
         }
-      while (std::abs((grain_size - (original_grain_size + grain_size_change)) / grain_size) > 0.002);
-      std::cout << "Done.\n";
+      while (time < timestep);
+
+      //std::cout << "Grain size reduction: " << original_grain_size - grain_size << "! \n";
 
       //  Assert (grain_size + grain_size_change >= 1.e-6, ExcMessage ("Error: The grain size should not be smaller than 1e-6 m."));
       if (original_grain_size + grain_size_change < 1.e-5)
@@ -187,7 +174,7 @@ namespace aspect
       if(!(grain_size_change - grain_size_change == 0))
         std::cout << "Grain size change is not a number! It is " << grain_size_change << "! \n";
 
-      return grain_size_change;
+      return grain_size - original_grain_size;
     }
 
     template <int dim>
