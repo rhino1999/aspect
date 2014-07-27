@@ -121,7 +121,7 @@ namespace aspect
 
           const double dislocation_strain_rate = second_strain_rate_invariant
               * viscosity(temperature, pressure, compositional_fields, strain_rate, position)
-              / dislocation_viscosity(temperature, pressure, second_strain_rate_invariant, position);
+              / dislocation_viscosity(temperature, pressure, compositional_fields, strain_rate, position);
 
           double grain_size_reduction = 0.0;
 
@@ -211,9 +211,19 @@ namespace aspect
     DamageRheology<dim>::
     diffusion_viscosity (const double                  temperature,
                          const double                  pressure,
-                         const double                  grain_size,
+                         const std::vector<double>    &composition,
+                         const SymmetricTensor<2,dim> &,
                          const Point<dim>             &position) const
     {
+      // TODO: make this more general, for more phases we have to average grain size somehow
+      // TODO: default when field is not given & warning
+      const std::string field_name = "olivine_grain_size";
+      const double grain_size = this->introspection().compositional_name_exists(field_name)
+                                ?
+                                composition[this->introspection().compositional_index_for_name(field_name)]
+                                :
+                                0.0;
+
       // TODO: we use the prefactors from Behn et al., 2009 as default values, but their laws use the strain rate
       // and we use the second invariant --> check if the prefactors should be changed
       double energy_term = exp((diffusion_activation_energy + diffusion_activation_volume * abs(pressure))
@@ -240,9 +250,13 @@ namespace aspect
     DamageRheology<dim>::
     dislocation_viscosity (const double      temperature,
                            const double      pressure,
-                           const double      second_strain_rate_invariant,
+                           const std::vector<double> &,
+                           const SymmetricTensor<2,dim> &strain_rate,
                            const Point<dim> &position) const
     {
+      const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
+      const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
+
       double energy_term = exp((dislocation_activation_energy + dislocation_activation_volume * pressure)
                          / (dislocation_creep_exponent * gas_constant * temperature));
       if (this->get_adiabatic_conditions().is_initialized())
@@ -273,18 +287,8 @@ namespace aspect
                      const SymmetricTensor<2,dim> &strain_rate,
                      const Point<dim> &position) const
     {
-      const std::string field_name = "olivine_grain_size";
-      const double grain_size = this->introspection().compositional_name_exists(field_name)
-                                ?
-                                composition[this->introspection().compositional_index_for_name(field_name)]
-                                :
-                                0.0;
-
-      const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
-      const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
-
-      return dislocation_viscosity(temperature,pressure,second_strain_rate_invariant,position)
-           / diffusion_viscosity(temperature,pressure,grain_size,position);
+      return dislocation_viscosity(temperature,pressure,composition,strain_rate,position)
+           / diffusion_viscosity(temperature,pressure,composition,strain_rate,position);
     }
 
     template <int dim>
@@ -296,15 +300,6 @@ namespace aspect
                const SymmetricTensor<2,dim> &strain_rate,
                const Point<dim> &position) const
     {
-      // TODO: make this more general, for more phases we have to average grain size somehow
-      // TODO: default when field is not given & warning
-      const std::string field_name = "olivine_grain_size";
-      const double grain_size = this->introspection().compositional_name_exists(field_name)
-                                ?
-                                composition[this->introspection().compositional_index_for_name(field_name)]
-                                :
-                                0.0;
-
       //TODO: add assert
       /*if (this->get_timestep_number() > 0)
         Assert (grain_size >= 1.e-6, ExcMessage ("Error: The grain size should not be smaller than 1e-6 m."));*/
@@ -312,8 +307,8 @@ namespace aspect
       const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
       const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
 
-      const double diff_viscosity = diffusion_viscosity(temperature, pressure, grain_size, position);
-      const double disl_viscosity = dislocation_viscosity(temperature, pressure, second_strain_rate_invariant, position);
+      const double diff_viscosity = diffusion_viscosity(temperature, pressure, composition, strain_rate, position);
+      const double disl_viscosity = dislocation_viscosity(temperature, pressure, composition, strain_rate, position);
 
       double effective_viscosity;
       if(std::abs(second_strain_rate_invariant) > 1e-30)//1e6*std::numeric_limits<double>::min())

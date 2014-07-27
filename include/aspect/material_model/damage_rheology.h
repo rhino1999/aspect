@@ -202,12 +202,14 @@ namespace aspect
 
         virtual double diffusion_viscosity (const double      temperature,
                                             const double      pressure,
-                                            const double      grain_size,
+                                            const std::vector<double>    &compositional_fields,
+                                            const SymmetricTensor<2,dim> &,
                                             const Point<dim> &position) const;
 
         virtual double dislocation_viscosity (const double      temperature,
                                               const double      pressure,
-                                              const double      second_strain_rate_invariant,
+                                              const std::vector<double>    &,
+                                              const SymmetricTensor<2,dim> &strain_rate,
                                               const Point<dim> &position) const;
 
         virtual double density (const double temperature,
