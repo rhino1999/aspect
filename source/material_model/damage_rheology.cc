@@ -267,6 +267,29 @@ namespace aspect
     template <int dim>
     double
     DamageRheology<dim>::
+    viscosity_ratio (const double temperature,
+                     const double pressure,
+                     const std::vector<double> &composition,
+                     const SymmetricTensor<2,dim> &strain_rate,
+                     const Point<dim> &position) const
+    {
+      const std::string field_name = "olivine_grain_size";
+      const double grain_size = this->introspection().compositional_name_exists(field_name)
+                                ?
+                                composition[this->introspection().compositional_index_for_name(field_name)]
+                                :
+                                0.0;
+
+      const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
+      const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
+
+      return dislocation_viscosity(temperature,pressure,second_strain_rate_invariant,position)
+           / diffusion_viscosity(temperature,pressure,grain_size,position);
+    }
+
+    template <int dim>
+    double
+    DamageRheology<dim>::
     viscosity (const double temperature,
                const double pressure,
                const std::vector<double> &composition,
@@ -276,21 +299,21 @@ namespace aspect
       // TODO: make this more general, for more phases we have to average grain size somehow
       // TODO: default when field is not given & warning
       const std::string field_name = "olivine_grain_size";
-      double grain_size = this->introspection().compositional_name_exists(field_name)
-                              ?
-                              composition[this->introspection().compositional_index_for_name(field_name)]
-                              :
-                              0.0;
+      const double grain_size = this->introspection().compositional_name_exists(field_name)
+                                ?
+                                composition[this->introspection().compositional_index_for_name(field_name)]
+                                :
+                                0.0;
 
       //TODO: add assert
       /*if (this->get_timestep_number() > 0)
         Assert (grain_size >= 1.e-6, ExcMessage ("Error: The grain size should not be smaller than 1e-6 m."));*/
 
       const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
-      double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
+      const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
 
-      double diff_viscosity = diffusion_viscosity(temperature, pressure, grain_size, position);
-      double disl_viscosity = dislocation_viscosity(temperature, pressure, second_strain_rate_invariant, position);
+      const double diff_viscosity = diffusion_viscosity(temperature, pressure, grain_size, position);
+      const double disl_viscosity = dislocation_viscosity(temperature, pressure, second_strain_rate_invariant, position);
 
       double effective_viscosity;
       if(std::abs(second_strain_rate_invariant) > 1e-30)//1e6*std::numeric_limits<double>::min())
