@@ -87,18 +87,26 @@ namespace aspect
       // we want to iterate over the grain size evolution here, as we solve in fact an ordinary differential equation
       // and it is not correct to use the starting grain size (and introduces instabilities)
       const double original_grain_size = compositional_fields[phase_index];
+      if((original_grain_size != original_grain_size) || this->get_timestep() == 0.0
+                                                      || original_grain_size < std::numeric_limits<double>::min())
+        return 0.0;
+
       double grain_size = original_grain_size;
       double grain_size_change = 0.0;
       const double timestep = this->get_timestep();
       //(this->get_timestep_number() > 0 ? 0.1 * 100000 / 0.01 / 32 * 3600 * 24 * 365.25 : 0.0); //
-      double grain_growth_timestep = 1000 * 3600 * 24 * 365.25; // 500 yrs
-      double time = -grain_growth_timestep;
+      double grain_growth_timestep = 0.001 * 3600 * 24 * 365.25; // 500 yrs
+      double time = 0;
 
       do
         {
           time += grain_growth_timestep;
-          if(timestep - time < grain_growth_timestep)
-            grain_growth_timestep = timestep - time;
+
+          if(timestep - time < 0)
+            {
+              grain_growth_timestep = time - timestep;
+              time = timestep;
+            }
 
           // grain size growth due to Ostwald ripening
           const double m = grain_growth_exponent;
@@ -159,8 +167,26 @@ namespace aspect
               phase_grain_size_reduction = 0.0;
             }
 
-          // TODO: assert grain size > 0
           grain_size_change = grain_size_growth - grain_size_reduction - phase_grain_size_reduction;
+
+          if ((grain_size_change / grain_size < 0.001 && grain_size_growth / grain_size < 0.1
+            && grain_size_reduction / grain_size < 0.1) || grain_size == 0.0)
+            grain_growth_timestep *= 2;
+          else if (grain_size_change / grain_size > 0.1)
+            {
+//              std::cout << "Reset timestep. Grain size is " << grain_size << " and growth is " << grain_size_change
+//                        << " New timestep is 0.5 * " << grain_growth_timestep << "\n";
+              grain_size_change = 0.0;
+              time -= grain_growth_timestep;
+              grain_growth_timestep /= 2.0;
+            }
+          if (grain_size < 0)
+            {
+            std::cout << "Grain size smaller 0:  " << grain_size << " ," << grain_size_growth
+                << " ," << grain_size_reduction << ", timestep: " << grain_growth_timestep << "! \n ";
+            break;
+            }
+
           grain_size += grain_size_change;
         }
       while (time < timestep);
@@ -168,11 +194,14 @@ namespace aspect
       //std::cout << "Grain size reduction: " << original_grain_size - grain_size << "! \n";
 
       //  Assert (grain_size + grain_size_change >= 1.e-6, ExcMessage ("Error: The grain size should not be smaller than 1e-6 m."));
-      if (original_grain_size + grain_size_change < 1.e-5)
-        std::cout << "Grain size is " << original_grain_size + grain_size_change << "! It needs to be larger than 1e-5.";
+      if (grain_size < 1.e-5)
+        {
+          std::cout << "Grain size is " << grain_size << "! It needs to be larger than 1e-5.\n";
+          grain_size = 1e-5;
+        }
 
-      if(!(grain_size_change - grain_size_change == 0))
-        std::cout << "Grain size change is not a number! It is " << grain_size_change << "! \n";
+//      if(!(grain_size - grain_size == 0))
+//        std::cout << "Grain size change is not a number! It is " << grain_size << "! \n";
 
       return grain_size - original_grain_size;
     }
