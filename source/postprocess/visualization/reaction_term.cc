@@ -67,7 +67,7 @@ namespace aspect
       ReactionTerm<dim>::
       get_needed_update_flags () const
       {
-        return update_values;
+        return update_values  | update_q_points;
       }
 
       template <int dim>
@@ -82,7 +82,7 @@ namespace aspect
       {
         const unsigned int n_quadrature_points = uh.size();
         Assert (computed_quantities.size() == n_quadrature_points,    ExcInternalError());
-        Assert (computed_quantities[0].size() == 1,                   ExcInternalError());
+        Assert (computed_quantities[0].size() == this->n_compositional_fields(), ExcInternalError());
         Assert (uh[0].size() == this->introspection().n_components,           ExcInternalError());
 
         typename MaterialModel::Interface<dim>::MaterialModelInputs in(n_quadrature_points,
