@@ -82,7 +82,8 @@ namespace aspect
                             const SymmetricTensor<2,dim> &strain_rate,
                             const Tensor<1,dim>          &velocity,
                             const Point<dim>             &position,
-                            const unsigned int            phase_index) const
+                            const unsigned int            phase_index,
+                            const bool                    crossed_transition) const
     {
       // we want to iterate over the grain size evolution here, as we solve in fact an ordinary differential equation
       // and it is not correct to use the starting grain size (and introduces instabilities)
@@ -95,7 +96,6 @@ namespace aspect
       double grain_size = original_grain_size;
       double grain_size_change = 0.0;
       const double timestep = this->get_timestep();
-      //(this->get_timestep_number() > 0 ? 0.1 * 100000 / 0.01 / 32 * 3600 * 24 * 365.25 : 0.0); //
       double grain_growth_timestep = 500 * 3600 * 24 * 365.25; // 500 yrs
       double time = 0;
 
@@ -140,35 +140,7 @@ namespace aspect
               grain_size_reduction = reciprocal_required_strain * dislocation_strain_rate * grain_size * grain_growth_timestep;
             }
 
-          // reduce grain size to recrystallized_grain_size when crossing phase transitions
-          // if the distance in radial direction a grain moved compared to the last time step
-          // is crossing a phase transition, reduce grain size
-
-          // TODO: recrystallize first, and then do grain size growth/reduction for grains that crossed the transition
-          // in dependence of the distance they have moved
-          double phase_grain_size_reduction = 0.0;
-          if (this->introspection().name_for_compositional_index(phase_index) == "olivine_grain_size"
-              &&
-              this->get_timestep_number() > 0)
-            {
-              const Point<dim> moved_distance(velocity * this->get_timestep());
-              const Point<dim> old_position = position - moved_distance;
-
-              // check if material has crossed any phase transition, if yes, reset grain size
-              bool crossed_transition = false;
-              for (unsigned int phase_index=0;phase_index<transition_depths.size();++phase_index)
-                if(phase_function(position, temperature, pressure, phase_index)
-                    - phase_function(old_position, temperature, pressure, phase_index) == 1)
-                  crossed_transition = true;
-              if (crossed_transition)
-                phase_grain_size_reduction = current_composition[phase_index] - recrystallized_grain_size;
-            }
-          else if (this->introspection().name_for_compositional_index(phase_index) == "pyroxene_grain_size")
-            {
-              phase_grain_size_reduction = 0.0;
-            }
-
-          grain_size_change = grain_size_growth - grain_size_reduction - phase_grain_size_reduction;
+          grain_size_change = grain_size_growth - grain_size_reduction;
 
           if ((grain_size_change / grain_size < 0.001 && grain_size_growth / grain_size < 0.1
             && grain_size_reduction / grain_size < 0.1) || grain_size == 0.0)
@@ -176,8 +148,6 @@ namespace aspect
           else if (grain_size_change / grain_size > 0.1 || grain_size_growth / grain_size > 0.5
               || grain_size_reduction / grain_size > 0.5)
             {
-//              std::cout << "Reset timestep. Grain size is " << grain_size << " and growth is " << grain_size_change
-//                        << " New timestep is 0.5 * " << grain_growth_timestep << "\n";
               grain_size_change = 0.0;
               time -= grain_growth_timestep;
               grain_growth_timestep /= 2.0;
@@ -195,9 +165,26 @@ namespace aspect
         }
       while (time < timestep);
 
-      //std::cout << "Grain size reduction: " << original_grain_size - grain_size << "! \n";
+      // reduce grain size to recrystallized_grain_size when crossing phase transitions
+      // if the distance in radial direction a grain moved compared to the last time step
+      // is crossing a phase transition, reduce grain size
 
-      //  Assert (grain_size + grain_size_change >= 1.e-6, ExcMessage ("Error: The grain size should not be smaller than 1e-6 m."));
+      // TODO: recrystallize first, and then do grain size growth/reduction for grains that crossed the transition
+      // in dependence of the distance they have moved
+      double phase_grain_size_reduction = 0.0;
+      if (this->introspection().name_for_compositional_index(phase_index) == "olivine_grain_size"
+          &&
+          this->get_timestep_number() > 0)
+        {
+          // check if material has crossed any phase transition, if yes, reset grain size
+          if (crossed_transition)
+            phase_grain_size_reduction = grain_size - recrystallized_grain_size;
+        }
+      else if (this->introspection().name_for_compositional_index(phase_index) == "pyroxene_grain_size")
+        {
+          phase_grain_size_reduction = 0.0;
+        }
+
       if (grain_size < 1.e-5)
         {
           std::cout << "Grain size is " << grain_size << "! It needs to be larger than 1e-5.\n";
@@ -206,7 +193,7 @@ namespace aspect
 
 //      if(!(grain_size - grain_size == 0))
 //        std::cout << "Grain size change is not a number! It is " << grain_size << "! \n";
-      return grain_size - original_grain_size;
+      return grain_size - original_grain_size - phase_grain_size_reduction;
     }
 
     template <int dim>
@@ -431,8 +418,19 @@ namespace aspect
     DamageRheology<dim>::
     evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const
     {
+      // set up a vector that tells us if a phase transition has been crossed inside of the cell
+      std::vector<bool> crossed_transition(in.position.size(),false);
+
       for (unsigned int i=0; i<in.position.size(); ++i)
         {
+          for (unsigned int j=0; j<in.position.size(); ++j)
+            for (unsigned int k=0;k<transition_depths.size();++k)
+              if((phase_function(in.position[i], in.temperature[i], in.pressure[i], k)
+                  != phase_function(in.position[j], in.temperature[j], in.pressure[j], k))
+                  &&
+                  (in.velocity[i] * (in.position[i] - in.position[j]) > 0))
+                crossed_transition[i] = true;
+
           if (in.strain_rate.size() > 0)
             out.viscosities[i] = viscosity(in.temperature[i], in.pressure[i], in.composition[i], in.strain_rate[i], in.position[i]);
 
@@ -443,14 +441,15 @@ namespace aspect
           out.compressibilities[i] = 0.0;
 
           // TODO: make this more general for not just olivine grains
-          for (unsigned int c=0;c<in.composition[i].size();++c)
-            {
-            if (this->introspection().name_for_compositional_index(c) == "olivine_grain_size")
-              out.reaction_terms[i][c] = grain_size_growth_rate(in.temperature[i], in.pressure[i], in.composition[i],
-                                                                in.strain_rate[i], in.velocity[i], in.position[i], c);
-            else
-              out.reaction_terms[i][c] = 0.0;
-            }
+          if (in.strain_rate.size() > 0)
+            for (unsigned int c=0;c<in.composition[i].size();++c)
+              {
+                if (this->introspection().name_for_compositional_index(c) == "olivine_grain_size")
+                  out.reaction_terms[i][c] = grain_size_growth_rate(in.temperature[i], in.pressure[i], in.composition[i],
+                      in.strain_rate[i], in.velocity[i], in.position[i], c, crossed_transition[i]);
+                else
+                  out.reaction_terms[i][c] = 0.0;
+              }
         }
 
     }

@@ -234,7 +234,8 @@ namespace aspect
                                 const SymmetricTensor<2,dim> &strain_rate,
                                 const Tensor<1,dim>          &velocity,
                                 const Point<dim>             &position,
-                                const unsigned int            phase_index) const;
+                                const unsigned int            phase_index,
+                                const bool                    crossed_transition) const;
 
         /**
          * Function that defines the phase transition interface
