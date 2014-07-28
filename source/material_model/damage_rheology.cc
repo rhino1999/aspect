@@ -105,7 +105,7 @@ namespace aspect
 
           if(timestep - time < 0)
             {
-              grain_growth_timestep = time - timestep;
+              grain_growth_timestep = timestep - (time - grain_growth_timestep);
               time = timestep;
             }
 
