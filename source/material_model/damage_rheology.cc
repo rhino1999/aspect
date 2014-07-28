@@ -173,7 +173,8 @@ namespace aspect
           if ((grain_size_change / grain_size < 0.001 && grain_size_growth / grain_size < 0.1
             && grain_size_reduction / grain_size < 0.1) || grain_size == 0.0)
             grain_growth_timestep *= 2;
-          else if (grain_size_change / grain_size > 0.1)
+          else if (grain_size_change / grain_size > 0.1 || grain_size_growth / grain_size > 0.5
+              || grain_size_reduction / grain_size > 0.5)
             {
 //              std::cout << "Reset timestep. Grain size is " << grain_size << " and growth is " << grain_size_change
 //                        << " New timestep is 0.5 * " << grain_growth_timestep << "\n";
