@@ -91,11 +91,12 @@ namespace aspect
                                                       || original_grain_size < std::numeric_limits<double>::min())
         return 0.0;
 
+      std::vector<double> current_composition = compositional_fields;
       double grain_size = original_grain_size;
       double grain_size_change = 0.0;
       const double timestep = this->get_timestep();
       //(this->get_timestep_number() > 0 ? 0.1 * 100000 / 0.01 / 32 * 3600 * 24 * 365.25 : 0.0); //
-      double grain_growth_timestep = 0.001 * 3600 * 24 * 365.25; // 500 yrs
+      double grain_growth_timestep = 500 * 3600 * 24 * 365.25; // 500 yrs
       double time = 0;
 
       do
@@ -120,15 +121,15 @@ namespace aspect
           double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
 
           const double dislocation_strain_rate = second_strain_rate_invariant
-              * viscosity(temperature, pressure, compositional_fields, strain_rate, position)
-              / dislocation_viscosity(temperature, pressure, compositional_fields, strain_rate, position);
+              * viscosity(temperature, pressure, current_composition, strain_rate, position)
+              / dislocation_viscosity(temperature, pressure, current_composition, strain_rate, position);
 
           double grain_size_reduction = 0.0;
 
           if (use_paleowattmeter)
             {
               // paleowattmeter: Austin and Evans (2007): Paleowattmeters: A scaling relation for dynamically recrystallized grain size. Geology 35, 343-346
-              const double stress = 2.0 * second_strain_rate_invariant * viscosity(temperature, pressure, compositional_fields, strain_rate, position);
+              const double stress = 2.0 * second_strain_rate_invariant * viscosity(temperature, pressure, current_composition, strain_rate, position);
               grain_size_reduction = stress * boundary_area_change_work_fraction * dislocation_strain_rate * pow(grain_size,2)
               / (geometric_constant * grain_boundary_energy)
               * grain_growth_timestep;
@@ -160,7 +161,7 @@ namespace aspect
                     - phase_function(old_position, temperature, pressure, phase_index) == 1)
                   crossed_transition = true;
               if (crossed_transition)
-                phase_grain_size_reduction = compositional_fields[phase_index] - recrystallized_grain_size;
+                phase_grain_size_reduction = current_composition[phase_index] - recrystallized_grain_size;
             }
           else if (this->introspection().name_for_compositional_index(phase_index) == "pyroxene_grain_size")
             {
@@ -180,14 +181,16 @@ namespace aspect
               time -= grain_growth_timestep;
               grain_growth_timestep /= 2.0;
             }
+
+          grain_size += grain_size_change;
+          current_composition[phase_index] = grain_size;
+
           if (grain_size < 0)
             {
             std::cout << "Grain size smaller 0:  " << grain_size << " ," << grain_size_growth
                 << " ," << grain_size_reduction << ", timestep: " << grain_growth_timestep << "! \n ";
             break;
             }
-
-          grain_size += grain_size_change;
         }
       while (time < timestep);
 
@@ -202,7 +205,6 @@ namespace aspect
 
 //      if(!(grain_size - grain_size == 0))
 //        std::cout << "Grain size change is not a number! It is " << grain_size << "! \n";
-
       return grain_size - original_grain_size;
     }
 
