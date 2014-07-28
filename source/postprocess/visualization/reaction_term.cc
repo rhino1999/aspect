@@ -91,7 +91,6 @@ namespace aspect
                                                                          this->n_compositional_fields());
 
         in.position = evaluation_points;
-        in.strain_rate.resize(0); // we do not need the viscosity
         for (unsigned int q=0; q<n_quadrature_points; ++q)
           {
             in.pressure[q]=uh[q][this->introspection().component_indices.pressure];
