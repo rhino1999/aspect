@@ -177,8 +177,9 @@ namespace aspect
           this->get_timestep_number() > 0)
         {
           // check if material has crossed any phase transition, if yes, reset grain size
-          if (crossed_transition)
-            phase_grain_size_reduction = grain_size - recrystallized_grain_size;
+          for (unsigned int k=0;k<transition_depths.size();++k)
+            if (crossed_transition)
+              phase_grain_size_reduction = grain_size - recrystallized_grain_size[k];
         }
       else if (this->introspection().name_for_compositional_index(phase_index) == "pyroxene_grain_size")
         {
@@ -428,7 +429,8 @@ namespace aspect
               if((phase_function(in.position[i], in.temperature[i], in.pressure[i], k)
                   != phase_function(in.position[j], in.temperature[j], in.pressure[j], k))
                   &&
-                  (in.velocity[i] * (in.position[i] - in.position[j]) > 0))
+                  ((in.velocity[i] * this->get_gravity_model().gravity_vector(in.position[i]))
+                  / ((in.position[i] - in.position[j]) * this->get_gravity_model().gravity_vector(in.position[i]) > 0)))
                 crossed_transition[i] = true;
 
           if (in.strain_rate.size() > 0)
@@ -551,7 +553,7 @@ namespace aspect
                              "This parameters $\\lambda$ gives an estimate of the strain necessary "
                              "to achieve a new grain size. ");
           prm.declare_entry ("Recrystallized grain size", "0.001",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double()),
                              "The grain size $d_{ph}$ to that a phase will be reduced to when crossing a phase transition. "
                              "Units: m.");
           prm.declare_entry ("Use paleowattmeter", "true",
@@ -664,7 +666,8 @@ namespace aspect
           grain_growth_rate_constant                = prm.get_double ("Grain growth rate constant");
           grain_growth_exponent                     = prm.get_double ("Grain growth exponent");
           reciprocal_required_strain                = prm.get_double ("Reciprocal required strain");
-          recrystallized_grain_size                 = prm.get_double ("Recrystallized grain size");
+          recrystallized_grain_size = Utilities::string_to_double
+                                      (Utilities::split_string_list(prm.get ("Recrystallized grain size")));
 
           use_paleowattmeter                        = prm.get_bool ("Use paleowattmeter");
           grain_boundary_energy                     = prm.get_double ("Average specific grain boundary energy");
