@@ -174,7 +174,7 @@ namespace aspect
         double grain_growth_rate_constant;
         double grain_growth_exponent;
         double reciprocal_required_strain;
-        double recrystallized_grain_size;
+        std::vector<double> recrystallized_grain_size;
 
         // for paleowattmeter
         bool use_paleowattmeter;
