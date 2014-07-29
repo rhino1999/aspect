@@ -67,7 +67,7 @@ namespace aspect
       ReactionTerm<dim>::
       get_needed_update_flags () const
       {
-        return update_values  | update_q_points;
+        return update_gradients | update_values  | update_q_points;
       }
 
       template <int dim>
@@ -93,6 +93,11 @@ namespace aspect
         in.position = evaluation_points;
         for (unsigned int q=0; q<n_quadrature_points; ++q)
           {
+            Tensor<2,dim> grad_u;
+            for (unsigned int d=0; d<dim; ++d)
+              grad_u[d] = duh[q][d];
+            in.strain_rate[q] = symmetrize (grad_u);
+
             in.pressure[q]=uh[q][this->introspection().component_indices.pressure];
             in.temperature[q]=uh[q][this->introspection().component_indices.temperature];
             for (unsigned int i = 0; i < dim; ++i)
