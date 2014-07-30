@@ -36,8 +36,11 @@ namespace aspect
     phase_function (const Point<dim> &position,
                     const double temperature,
                     const double pressure,
-                    const int phase) const
+                    const unsigned int phase) const
     {
+      Assert(phase < transition_depths.size(),
+          ExcMessage("Error: Phase index is too large. This phase index does not exist!"));
+
       // if we already have the adiabatic conditions, we can use them
       if (this->get_adiabatic_conditions().is_initialized())
         {
@@ -69,8 +72,30 @@ namespace aspect
                                     - transition_slopes[phase] / (this->get_gravity_model().gravity_vector(position).norm() * reference_rho)
                                     * (temperature - transition_temperatures[phase]));
 
-          return (depth_deviation > 0) ? 1 : 0;;
+          return (depth_deviation > 0) ? 1 : 0;
         }
+    }
+
+    template <int dim>
+    unsigned int
+    DamageRheology<dim>::
+    get_phase_index (const Point<dim> &position,
+                     const double temperature,
+                     const double pressure) const
+    {
+      Assert(grain_growth_activation_energy.size()>0,
+                  ExcMessage("Error: No grain evolution parameters are given!"));
+
+      unsigned int phase_index = 0;
+      if(transition_depths.size()>0)
+        if(phase_function(position, temperature, pressure, transition_depths.size()-1) == 1)
+          phase_index = transition_depths.size();
+
+      for(unsigned int j=1;j<transition_depths.size();++j)
+        if(phase_function(position, temperature, pressure, j) != phase_function(position, temperature, pressure, j-1))
+          phase_index = j;
+
+      return phase_index;
     }
 
     template <int dim>
@@ -82,22 +107,26 @@ namespace aspect
                             const SymmetricTensor<2,dim> &strain_rate,
                             const Tensor<1,dim>          &velocity,
                             const Point<dim>             &position,
-                            const unsigned int            phase_index,
+                            const unsigned int            field_index,
                             const bool                    crossed_transition) const
     {
       // we want to iterate over the grain size evolution here, as we solve in fact an ordinary differential equation
       // and it is not correct to use the starting grain size (and introduces instabilities)
-      const double original_grain_size = compositional_fields[phase_index];
+      const double original_grain_size = compositional_fields[field_index];
       if((original_grain_size != original_grain_size) || this->get_timestep() == 0.0
                                                       || original_grain_size < std::numeric_limits<double>::min())
         return 0.0;
 
+      // set up the parameters for the sub-timestepping of grain size evolution
       std::vector<double> current_composition = compositional_fields;
       double grain_size = original_grain_size;
       double grain_size_change = 0.0;
       const double timestep = this->get_timestep();
       double grain_growth_timestep = 500 * 3600 * 24 * 365.25; // 500 yrs
       double time = 0;
+
+      // find out in which phase we are
+      const unsigned int ol_index = get_phase_index(position, temperature, pressure);
 
       do
         {
@@ -110,9 +139,9 @@ namespace aspect
             }
 
           // grain size growth due to Ostwald ripening
-          const double m = grain_growth_exponent;
-          const double grain_size_growth = grain_growth_rate_constant / (m * pow(grain_size,m-1))
-                                   * exp(- (grain_growth_activation_energy + pressure * grain_growth_activation_volume)
+          const double m = grain_growth_exponent[ol_index];
+          const double grain_size_growth = grain_growth_rate_constant[ol_index] / (m * pow(grain_size,m-1))
+                                   * exp(- (grain_growth_activation_energy[ol_index] + pressure * grain_growth_activation_volume[ol_index])
                                        / (gas_constant * temperature))
                                        * grain_growth_timestep;
 
@@ -130,14 +159,14 @@ namespace aspect
             {
               // paleowattmeter: Austin and Evans (2007): Paleowattmeters: A scaling relation for dynamically recrystallized grain size. Geology 35, 343-346
               const double stress = 2.0 * second_strain_rate_invariant * viscosity(temperature, pressure, current_composition, strain_rate, position);
-              grain_size_reduction = stress * boundary_area_change_work_fraction * dislocation_strain_rate * pow(grain_size,2)
-              / (geometric_constant * grain_boundary_energy)
+              grain_size_reduction = stress * boundary_area_change_work_fraction[ol_index] * dislocation_strain_rate * pow(grain_size,2)
+              / (geometric_constant[ol_index] * grain_boundary_energy[ol_index])
               * grain_growth_timestep;
             }
           else
             {
               // paleopiezometer: Hall and Parmentier (2003): Influence of grain size evolution on convective instability. Geochem. Geophys. Geosyst., 4(3).
-              grain_size_reduction = reciprocal_required_strain * dislocation_strain_rate * grain_size * grain_growth_timestep;
+              grain_size_reduction = reciprocal_required_strain[ol_index] * dislocation_strain_rate * grain_size * grain_growth_timestep;
             }
 
           grain_size_change = grain_size_growth - grain_size_reduction;
@@ -154,7 +183,7 @@ namespace aspect
             }
 
           grain_size += grain_size_change;
-          current_composition[phase_index] = grain_size;
+          current_composition[field_index] = grain_size;
 
           if (grain_size < 0)
             {
@@ -172,7 +201,7 @@ namespace aspect
       // TODO: recrystallize first, and then do grain size growth/reduction for grains that crossed the transition
       // in dependence of the distance they have moved
       double phase_grain_size_reduction = 0.0;
-      if (this->introspection().name_for_compositional_index(phase_index) == "olivine_grain_size"
+      if (this->introspection().name_for_compositional_index(field_index) == "olivine_grain_size"
           &&
           this->get_timestep_number() > 0)
         {
@@ -181,7 +210,7 @@ namespace aspect
             if (crossed_transition)
               phase_grain_size_reduction = grain_size - recrystallized_grain_size[k];
         }
-      else if (this->introspection().name_for_compositional_index(phase_index) == "pyroxene_grain_size")
+      else if (this->introspection().name_for_compositional_index(field_index) == "pyroxene_grain_size")
         {
           phase_grain_size_reduction = 0.0;
         }
@@ -203,9 +232,12 @@ namespace aspect
     diffusion_viscosity (const double                  temperature,
                          const double                  pressure,
                          const std::vector<double>    &composition,
-                         const SymmetricTensor<2,dim> &,
+                         const SymmetricTensor<2,dim> &strain_rate,
                          const Point<dim>             &position) const
     {
+      const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
+      const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
+
       // TODO: make this more general, for more phases we have to average grain size somehow
       // TODO: default when field is not given & warning
       const std::string field_name = "olivine_grain_size";
@@ -215,14 +247,18 @@ namespace aspect
                                 :
                                 0.0;
 
+      // find out in which phase we are
+      const unsigned int ol_index = get_phase_index(position, temperature, pressure);
+
       // TODO: we use the prefactors from Behn et al., 2009 as default values, but their laws use the strain rate
       // and we use the second invariant --> check if the prefactors should be changed
-      double energy_term = exp((diffusion_activation_energy + diffusion_activation_volume * abs(pressure))
-                         / (diffusion_creep_exponent * gas_constant * temperature));
+      double energy_term = exp((diffusion_activation_energy[ol_index] + diffusion_activation_volume[ol_index] * abs(pressure))
+                         / (diffusion_creep_exponent[ol_index] * gas_constant * temperature));
       if (this->get_adiabatic_conditions().is_initialized())
         {
-          const double adiabatic_energy_term = exp((diffusion_activation_energy + diffusion_activation_volume * abs(pressure))
-                                             / (gas_constant * this->get_adiabatic_conditions().temperature(position)));
+          const double adiabatic_energy_term
+            = exp((diffusion_activation_energy[ol_index] + diffusion_activation_volume[ol_index] * abs(pressure))
+              / (gas_constant * this->get_adiabatic_conditions().temperature(position)));
 
           const double temperature_dependence = energy_term / adiabatic_energy_term;
           if (temperature_dependence > max_temperature_dependence_of_eta)
@@ -231,8 +267,11 @@ namespace aspect
             energy_term = adiabatic_energy_term / max_temperature_dependence_of_eta;
         }
 
-      return pow(diffusion_creep_prefactor,-1.0/diffusion_creep_exponent)
-             * pow(grain_size, diffusion_creep_grain_size_exponent)
+      const double strain_rate_dependence = (1.0 - diffusion_creep_exponent[ol_index]) / diffusion_creep_exponent[ol_index];
+
+      return pow(diffusion_creep_prefactor[ol_index],-1.0/diffusion_creep_exponent[ol_index])
+             * std::pow(second_strain_rate_invariant,strain_rate_dependence)
+             * pow(grain_size, diffusion_creep_grain_size_exponent[ol_index])
              * energy_term;
     }
 
@@ -248,12 +287,16 @@ namespace aspect
       const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
       const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
 
-      double energy_term = exp((dislocation_activation_energy + dislocation_activation_volume * pressure)
-                         / (dislocation_creep_exponent * gas_constant * temperature));
+      // find out in which phase we are
+      const unsigned int ol_index = get_phase_index(position, temperature, pressure);
+
+      double energy_term = exp((dislocation_activation_energy[ol_index] + dislocation_activation_volume[ol_index] * pressure)
+                         / (dislocation_creep_exponent[ol_index] * gas_constant * temperature));
       if (this->get_adiabatic_conditions().is_initialized())
         {
-          const double adiabatic_energy_term = exp((dislocation_activation_energy + dislocation_activation_volume * pressure)
-              / (dislocation_creep_exponent * gas_constant * this->get_adiabatic_conditions().temperature(position)));
+          const double adiabatic_energy_term
+            = exp((dislocation_activation_energy[ol_index] + dislocation_activation_volume[ol_index] * pressure)
+              / (dislocation_creep_exponent[ol_index] * gas_constant * this->get_adiabatic_conditions().temperature(position)));
 
           const double temperature_dependence = energy_term / adiabatic_energy_term;
           if (temperature_dependence > max_temperature_dependence_of_eta)
@@ -262,9 +305,9 @@ namespace aspect
             energy_term = adiabatic_energy_term / max_temperature_dependence_of_eta;
         }
 
-      const double strain_rate_dependence = (1.0 - dislocation_creep_exponent) / dislocation_creep_exponent;
+      const double strain_rate_dependence = (1.0 - dislocation_creep_exponent[ol_index]) / dislocation_creep_exponent[ol_index];
 
-      return pow(dislocation_creep_prefactor,-1.0/dislocation_creep_exponent)
+      return pow(dislocation_creep_prefactor[ol_index],-1.0/dislocation_creep_exponent[ol_index])
              * std::pow(second_strain_rate_invariant,strain_rate_dependence)
              * energy_term;
     }
@@ -530,26 +573,26 @@ namespace aspect
                              "List must have the same number of entries as Phase transition depths. "
                              "Units: $Pa/K$.");
           prm.declare_entry ("Grain growth activation energy", "3.5e5",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "The activation energy for grain growth $E_g$. "
                              "Units: $J/mol$.");
           prm.declare_entry ("Grain growth activation volume", "8e-6",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "The activation volume for grain growth $E_g$. "
                              "Units: $m^3/mol$.");
           prm.declare_entry ("Grain growth exponent", "3",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "Exponent of the grain growth law $p_g$. This is an experimentally determined "
                              "grain growth constant. "
                              "Units: none.");
           prm.declare_entry ("Grain growth rate constant", "1.5e-5",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "Prefactor of the Ostwald ripening grain growth law $G_0$. "
                              "This is dependent on water content, which is assumed to be "
                              "50 H/10^6 Si for the default value. "
                              "Units: $m^{p_g}/s$.");
           prm.declare_entry ("Reciprocal required strain", "10",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "This parameters $\\lambda$ gives an estimate of the strain necessary "
                              "to achieve a new grain size. ");
           prm.declare_entry ("Recrystallized grain size", "0.001",
@@ -563,51 +606,51 @@ namespace aspect
                              "in the dislocation creep regime (if true) or the paleopiezometer aprroach "
                              "from Hall and Parmetier (2003) (if false).");
           prm.declare_entry ("Average specific grain boundary energy", "1.0",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "The average specific grain boundary energy $\\gamma$. "
                              "Units: J/m^2.");
           prm.declare_entry ("Work fraction for boundary area change", "0.1",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "The fraction $\\chi$ of work done by dislocation creep to change the grain boundary area. "
                              "Units: J/m^2.");
           prm.declare_entry ("Geometric constant", "3",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "Geometric constant $c$ used in the paleowattmeter grain size reduction law. "
                              "Units: none.");
           prm.declare_entry ("Dislocation creep exponent", "3.5",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "Power-law exponent $n_{dis}$ for dislocation creep. "
                              "Units: none.");
           prm.declare_entry ("Dislocation activation energy", "4.8e5",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "The activation energy for dislocation creep $E_{dis}$. "
                              "Units: $J/mol$.");
           prm.declare_entry ("Dislocation activation volume", "1.1e-5",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "The activation volume for dislocation creep $V_{dis}$. "
                              "Units: $m^3/mol$.");
           prm.declare_entry ("Dislocation creep prefactor", "4.5e-15",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "Prefactor for the dislocation creep law $A_{dis}$. "
                              "Units: $Pa^{-n_{dis}}/s$.");
           prm.declare_entry ("Diffusion creep exponent", "1",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "Power-law exponent $n_{diff}$ for diffusion creep. "
                              "Units: none.");
           prm.declare_entry ("Diffusion activation energy", "3.35e5",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "The activation energy for diffusion creep $E_{diff}$. "
                              "Units: $J/mol$.");
           prm.declare_entry ("Diffusion activation volume", "4e-6",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "The activation volume for diffusion creep $V_{diff}$. "
                              "Units: $m^3/mol$.");
           prm.declare_entry ("Diffusion creep prefactor", "7.4e-15",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "Prefactor for the diffusion creep law $A_{diff}$. "
                              "Units: $m^{p_{diff}} Pa^{-n_{diff}}/s$.");
           prm.declare_entry ("Diffusion creep grain size exponent", "3",
-                             Patterns::Double (0),
+                             Patterns::List (Patterns::Double(0)),
                              "Diffusion creep grain size exponent $p_{diff}$ that determines the "
                              "dependence of vescosity on grain size. "
                              "Units: none.");
@@ -657,34 +700,90 @@ namespace aspect
           if (transition_temperatures.size() != transition_depths.size() ||
               transition_slopes.size() != transition_depths.size() ||
               transition_phases.size() != transition_depths.size() )
-            AssertThrow(false,
+            Assert(false,
                 ExcMessage("Error: At least one list that gives input parameters for the phase transitions has the wrong size."));
 
-          // grain evolution parameters
-          grain_growth_activation_energy            = prm.get_double ("Grain growth activation energy");
-          grain_growth_activation_volume            = prm.get_double ("Grain growth activation volume");
-          grain_growth_rate_constant                = prm.get_double ("Grain growth rate constant");
-          grain_growth_exponent                     = prm.get_double ("Grain growth exponent");
-          reciprocal_required_strain                = prm.get_double ("Reciprocal required strain");
-          recrystallized_grain_size = Utilities::string_to_double
-                                      (Utilities::split_string_list(prm.get ("Recrystallized grain size")));
+          // TODO: add assert that transition depths are in increasing order
 
-          use_paleowattmeter                        = prm.get_bool ("Use paleowattmeter");
-          grain_boundary_energy                     = prm.get_double ("Average specific grain boundary energy");
-          boundary_area_change_work_fraction        = prm.get_double ("Work fraction for boundary area change");
-          geometric_constant                        = prm.get_double ("Geometric constant");
+          // grain evolution parameters
+          grain_growth_activation_energy        = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Grain growth activation energy")));
+          grain_growth_activation_volume        = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Grain growth activation volume")));
+          grain_growth_rate_constant            = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Grain growth rate constant")));
+          grain_growth_exponent                 = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Grain growth exponent")));
+          reciprocal_required_strain            = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Reciprocal required strain")));
+          recrystallized_grain_size             = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Recrystallized grain size")));
+
+          use_paleowattmeter                    = prm.get_bool ("Use paleowattmeter");
+          grain_boundary_energy                 = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Average specific grain boundary energy")));
+          boundary_area_change_work_fraction    = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Work fraction for boundary area change")));
+          geometric_constant                    = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Geometric constant")));
 
           // rheology parameters
-          dislocation_creep_exponent                = prm.get_double ("Dislocation creep exponent");
-          dislocation_activation_energy             = prm.get_double ("Dislocation activation energy");
-          dislocation_activation_volume             = prm.get_double ("Dislocation activation volume");
-          dislocation_creep_prefactor               = prm.get_double ("Dislocation creep prefactor");
-          diffusion_creep_exponent                  = prm.get_double ("Diffusion creep exponent");
-          diffusion_activation_energy               = prm.get_double ("Diffusion activation energy");
-          diffusion_activation_volume               = prm.get_double ("Diffusion activation volume");
-          diffusion_creep_prefactor                 = prm.get_double ("Diffusion creep prefactor");
-          diffusion_creep_grain_size_exponent       = prm.get_double ("Diffusion creep grain size exponent");
-          max_temperature_dependence_of_eta         = prm.get_double ("Maximum temperature dependence of viscosity");
+          dislocation_creep_exponent            = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Dislocation creep exponent")));
+          dislocation_activation_energy         = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Dislocation activation energy")));
+          dislocation_activation_volume         = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Dislocation activation volume")));
+          dislocation_creep_prefactor           = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Dislocation creep prefactor")));
+          diffusion_creep_exponent              = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Diffusion creep exponent")));
+          diffusion_activation_energy           = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Diffusion activation energy")));
+          diffusion_activation_volume           = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Diffusion activation volume")));
+          diffusion_creep_prefactor             = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Diffusion creep prefactor")));
+          diffusion_creep_grain_size_exponent   = Utilities::string_to_double
+                                                  (Utilities::split_string_list(prm.get ("Diffusion creep grain size exponent")));
+          max_temperature_dependence_of_eta     = prm.get_double ("Maximum temperature dependence of viscosity");
+
+          if (grain_growth_activation_energy.size() != grain_growth_activation_volume.size() ||
+              grain_growth_activation_energy.size() != grain_growth_rate_constant.size() ||
+              grain_growth_activation_energy.size() != grain_growth_exponent.size() ||
+              grain_growth_activation_energy.size() != dislocation_creep_exponent.size() ||
+              grain_growth_activation_energy.size() != dislocation_activation_energy.size() ||
+              grain_growth_activation_energy.size() != dislocation_activation_volume.size() ||
+              grain_growth_activation_energy.size() != dislocation_creep_prefactor.size() ||
+              grain_growth_activation_energy.size() != diffusion_creep_exponent.size() ||
+              grain_growth_activation_energy.size() != diffusion_activation_energy.size() ||
+              grain_growth_activation_energy.size() != diffusion_activation_volume.size() ||
+              grain_growth_activation_energy.size() != diffusion_creep_prefactor.size() ||
+              grain_growth_activation_energy.size() != diffusion_creep_grain_size_exponent.size() )
+              Assert(false,
+                ExcMessage("Error: The lists of grain size evolution and flow law parameters "
+                           "need to have the same length!"));
+
+          if(use_paleowattmeter)
+            {
+              if(grain_growth_activation_energy.size() != grain_boundary_energy.size() ||
+                 grain_growth_activation_energy.size() != boundary_area_change_work_fraction.size() ||
+                 grain_growth_activation_energy.size() != geometric_constant.size() )
+                Assert(false,
+                ExcMessage("Error: One of the lists of grain size evolution parameters "
+                           "given for the paleowattmeter does not have the correct length!"));
+            }
+          else
+              Assert(grain_growth_activation_energy.size() == reciprocal_required_strain.size(),
+              ExcMessage("Error: The list of grain size evolution parameters in the "
+                         "paleopiezometer does not have the correct length!"));
+
+          Assert(grain_growth_activation_energy.size() == transition_depths.size()+1,
+          ExcMessage("Error: The lists of grain size evolution and flow law parameters need to "
+                     "have exactly one more entry than the number of phase transitions "
+                     "(which is defined by the length of the lists of phase transition depths, ...)!"));
+
+
         }
         prm.leave_subsection();
       }

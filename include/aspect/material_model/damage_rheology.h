@@ -169,29 +169,29 @@ namespace aspect
 
         // grain evolution parameters
         double gas_constant; // J/(K*mol)
-        double grain_growth_activation_energy;
-        double grain_growth_activation_volume;
-        double grain_growth_rate_constant;
-        double grain_growth_exponent;
-        double reciprocal_required_strain;
+        std::vector<double> grain_growth_activation_energy;
+        std::vector<double> grain_growth_activation_volume;
+        std::vector<double> grain_growth_rate_constant;
+        std::vector<double> grain_growth_exponent;
+        std::vector<double> reciprocal_required_strain;
         std::vector<double> recrystallized_grain_size;
 
         // for paleowattmeter
         bool use_paleowattmeter;
-        double grain_boundary_energy;
-        double boundary_area_change_work_fraction;
-        double geometric_constant;
+        std::vector<double> grain_boundary_energy;
+        std::vector<double> boundary_area_change_work_fraction;
+        std::vector<double> geometric_constant;
 
         // rheology parameters
-        double dislocation_creep_exponent;
-        double dislocation_activation_energy;
-        double dislocation_activation_volume;
-        double dislocation_creep_prefactor;
-        double diffusion_creep_exponent;
-        double diffusion_activation_energy;
-        double diffusion_activation_volume;
-        double diffusion_creep_prefactor;
-        double diffusion_creep_grain_size_exponent;
+        std::vector<double> dislocation_creep_exponent;
+        std::vector<double> dislocation_activation_energy;
+        std::vector<double> dislocation_activation_volume;
+        std::vector<double> dislocation_creep_prefactor;
+        std::vector<double> diffusion_creep_exponent;
+        std::vector<double> diffusion_activation_energy;
+        std::vector<double> diffusion_activation_volume;
+        std::vector<double> diffusion_creep_prefactor;
+        std::vector<double> diffusion_creep_grain_size_exponent;
         double max_temperature_dependence_of_eta;
 
         virtual double viscosity (const double                  temperature,
@@ -247,7 +247,18 @@ namespace aspect
         phase_function (const Point<dim> &position,
                         const double temperature,
                         const double pressure,
-                        const int phase) const;
+                        const unsigned int phase) const;
+
+        /**
+         * Function that returns the phase for a given
+         * position, temperature, pressure and compositional
+         * field index.
+         */
+        virtual
+        unsigned int
+        get_phase_index (const Point<dim> &position,
+                         const double temperature,
+                         const double pressure) const;
 
         // list of depth, width and Clapeyron slopes for the different phase
         // transitions and in which phase they occur
