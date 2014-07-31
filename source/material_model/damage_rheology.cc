@@ -258,7 +258,7 @@ namespace aspect
         {
           const double adiabatic_energy_term
             = exp((diffusion_activation_energy[ol_index] + diffusion_activation_volume[ol_index] * abs(pressure))
-              / (gas_constant * this->get_adiabatic_conditions().temperature(position)));
+              / (diffusion_creep_exponent[ol_index] * gas_constant * this->get_adiabatic_conditions().temperature(position)));
 
           const double temperature_dependence = energy_term / adiabatic_energy_term;
           if (temperature_dependence > max_temperature_dependence_of_eta)
@@ -271,7 +271,7 @@ namespace aspect
 
       return pow(diffusion_creep_prefactor[ol_index],-1.0/diffusion_creep_exponent[ol_index])
              * std::pow(second_strain_rate_invariant,strain_rate_dependence)
-             * pow(grain_size, diffusion_creep_grain_size_exponent[ol_index])
+             * pow(grain_size, diffusion_creep_grain_size_exponent[ol_index]/diffusion_creep_exponent[ol_index])
              * energy_term;
     }
 
