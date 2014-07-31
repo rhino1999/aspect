@@ -207,7 +207,7 @@ namespace aspect
         {
           // check if material has crossed any phase transition, if yes, reset grain size
           for (unsigned int k=0;k<transition_depths.size();++k)
-            if (crossed_transition)
+            if (crossed_transition && recrystallized_grain_size[k] > 0.0)
               phase_grain_size_reduction = grain_size - recrystallized_grain_size[k];
         }
       else if (this->introspection().name_for_compositional_index(field_index) == "pyroxene_grain_size")
@@ -349,7 +349,7 @@ namespace aspect
         effective_viscosity = disl_viscosity * diff_viscosity / (disl_viscosity + diff_viscosity);
       else
         effective_viscosity = diff_viscosity;
-      return std::min(std::max(eta*1.e-3,effective_viscosity),eta*1.e3);
+      return effective_viscosity;
     }
 
 
@@ -477,7 +477,11 @@ namespace aspect
                 crossed_transition[i] = true;
 
           if (in.strain_rate.size() > 0)
-            out.viscosities[i] = viscosity(in.temperature[i], in.pressure[i], in.composition[i], in.strain_rate[i], in.position[i]);
+            out.viscosities[i] = std::min(std::max(eta*1.e-5,viscosity(in.temperature[i],
+                                                                       in.pressure[i],
+                                                                       in.composition[i],
+                                                                       in.strain_rate[i],
+                                                                       in.position[i])),eta*1.e5);
 
           out.densities[i] = density(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
           out.thermal_expansion_coefficients[i] = thermal_alpha;
@@ -596,8 +600,9 @@ namespace aspect
                              "This parameters $\\lambda$ gives an estimate of the strain necessary "
                              "to achieve a new grain size. ");
           prm.declare_entry ("Recrystallized grain size", "0.001",
-                             Patterns::List (Patterns::Double()),
+                             Patterns::List (Patterns::Double(0)),
                              "The grain size $d_{ph}$ to that a phase will be reduced to when crossing a phase transition. "
+                             "When set to zero, grain size will not be reduced. "
                              "Units: m.");
           prm.declare_entry ("Use paleowattmeter", "true",
                              Patterns::Bool (),
@@ -689,17 +694,20 @@ namespace aspect
           reference_specific_heat    = prm.get_double ("Reference specific heat");
           thermal_alpha              = prm.get_double ("Thermal expansion coefficient");
 
-          transition_depths = Utilities::string_to_double
-                              (Utilities::split_string_list(prm.get ("Phase transition depths")));
-          transition_temperatures = Utilities::string_to_double
-                                    (Utilities::split_string_list(prm.get ("Phase transition temperatures")));
-          transition_slopes = Utilities::string_to_double
-                              (Utilities::split_string_list(prm.get ("Phase transition Clapeyron slopes")));
-          transition_phases = Utilities::split_string_list (prm.get("Corresponding phase for transition"));
+          transition_depths         = Utilities::string_to_double
+                                      (Utilities::split_string_list(prm.get ("Phase transition depths")));
+          transition_temperatures   = Utilities::string_to_double
+                                      (Utilities::split_string_list(prm.get ("Phase transition temperatures")));
+          transition_slopes         = Utilities::string_to_double
+                                      (Utilities::split_string_list(prm.get ("Phase transition Clapeyron slopes")));
+          transition_phases         = Utilities::split_string_list (prm.get("Corresponding phase for transition"));
+          recrystallized_grain_size = Utilities::string_to_double
+                                      (Utilities::split_string_list(prm.get ("Recrystallized grain size")));
 
           if (transition_temperatures.size() != transition_depths.size() ||
               transition_slopes.size() != transition_depths.size() ||
-              transition_phases.size() != transition_depths.size() )
+              transition_phases.size() != transition_depths.size() ||
+              recrystallized_grain_size.size() != transition_depths.size() )
             Assert(false,
                 ExcMessage("Error: At least one list that gives input parameters for the phase transitions has the wrong size."));
 
@@ -716,8 +724,6 @@ namespace aspect
                                                   (Utilities::split_string_list(prm.get ("Grain growth exponent")));
           reciprocal_required_strain            = Utilities::string_to_double
                                                   (Utilities::split_string_list(prm.get ("Reciprocal required strain")));
-          recrystallized_grain_size             = Utilities::string_to_double
-                                                  (Utilities::split_string_list(prm.get ("Recrystallized grain size")));
 
           use_paleowattmeter                    = prm.get_bool ("Use paleowattmeter");
           grain_boundary_energy                 = Utilities::string_to_double
