@@ -374,7 +374,7 @@ namespace aspect
     double
     DamageRheology<dim>::
     density (const double temperature,
-             const double,
+             const double pressure,
              const std::vector<double> &compositional_fields, /*composition*/
              const Point<dim> &) const
     {
@@ -384,7 +384,8 @@ namespace aspect
                                             :
                                             0.0;
 
-      return (reference_rho + composition_dependence) * (1 - thermal_alpha * (temperature - reference_T));
+      return (reference_rho + composition_dependence) * std::exp(reference_compressibility * (pressure - this->get_surface_pressure()))
+          * (1 - thermal_alpha * (temperature - reference_T));
     }
 
 
@@ -448,12 +449,13 @@ namespace aspect
     }
 
 
+
     template <int dim>
     bool
     DamageRheology<dim>::
     is_compressible () const
     {
-      return false;
+      return (reference_compressibility != 0);
     }
 
 
@@ -487,7 +489,7 @@ namespace aspect
           out.thermal_expansion_coefficients[i] = thermal_alpha;
           out.specific_heat[i] = reference_specific_heat;
           out.thermal_conductivities[i] = k_value;
-          out.compressibilities[i] = 0.0;
+          out.compressibilities[i] = reference_compressibility;
 
           // TODO: make this more general for not just olivine grains
           if (in.strain_rate.size() > 0)
@@ -547,6 +549,10 @@ namespace aspect
                              Patterns::Double (0),
                              "The value of the thermal expansion coefficient $\\beta$. "
                              "Units: $1/K$.");
+          prm.declare_entry ("Reference compressibility", "4e-12",
+                             Patterns::Double (0),
+                             "The value of the reference compressibility. "
+                             "Units: $1/Pa$.");
           prm.declare_entry ("Phase transition depths", "",
                              Patterns::List (Patterns::Double(0)),
                              "A list of depths where phase transitions occur. Values must "
@@ -693,6 +699,8 @@ namespace aspect
           k_value                    = prm.get_double ("Thermal conductivity");
           reference_specific_heat    = prm.get_double ("Reference specific heat");
           thermal_alpha              = prm.get_double ("Thermal expansion coefficient");
+          reference_compressibility  = prm.get_double ("Reference compressibility");
+
 
           transition_depths         = Utilities::string_to_double
                                       (Utilities::split_string_list(prm.get ("Phase transition depths")));
