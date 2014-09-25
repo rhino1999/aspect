@@ -163,6 +163,11 @@ namespace aspect
         double reference_specific_heat;
 
         /**
+         * The constant compressibility.
+         */
+        double reference_compressibility;
+
+        /**
          * The thermal conductivity.
          */
         double k_value;
