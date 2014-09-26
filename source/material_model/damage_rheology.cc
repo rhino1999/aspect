@@ -475,7 +475,7 @@ namespace aspect
                   != phase_function(in.position[j], in.temperature[j], in.pressure[j], k))
                   &&
                   ((in.velocity[i] * this->get_gravity_model().gravity_vector(in.position[i]))
-                  / ((in.position[i] - in.position[j]) * this->get_gravity_model().gravity_vector(in.position[i]) > 0)))
+                  * ((in.position[i] - in.position[j]) * this->get_gravity_model().gravity_vector(in.position[i])) > 0))
                 crossed_transition = k;
 
           if (in.strain_rate.size() > 0)
