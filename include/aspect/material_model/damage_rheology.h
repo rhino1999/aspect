@@ -240,7 +240,7 @@ namespace aspect
                                 const Tensor<1,dim>          &velocity,
                                 const Point<dim>             &position,
                                 const unsigned int            phase_index,
-                                const bool                    crossed_transition) const;
+                                const int                     crossed_transition) const;
 
         /**
          * Function that defines the phase transition interface
