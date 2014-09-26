@@ -208,7 +208,7 @@ namespace aspect
           // check if material has crossed any phase transition, if yes, reset grain size
           if (crossed_transition != -1)
             if (recrystallized_grain_size[crossed_transition] > 0.0)
-              phase_grain_size_reduction = grain_size - recrystallized_grain_size[k];
+              phase_grain_size_reduction = grain_size - recrystallized_grain_size[crossed_transition];
         }
       else if (this->introspection().name_for_compositional_index(field_index) == "pyroxene_grain_size")
         {
@@ -497,7 +497,7 @@ namespace aspect
               {
                 if (this->introspection().name_for_compositional_index(c) == "olivine_grain_size")
                   out.reaction_terms[i][c] = grain_size_growth_rate(in.temperature[i], in.pressure[i], in.composition[i],
-                      in.strain_rate[i], in.velocity[i], in.position[i], c, crossed_transition[i]);
+                      in.strain_rate[i], in.velocity[i], in.position[i], c, crossed_transition);
                 else
                   out.reaction_terms[i][c] = 0.0;
               }
