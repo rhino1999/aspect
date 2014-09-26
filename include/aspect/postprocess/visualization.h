@@ -254,18 +254,6 @@ namespace aspect
         execute (TableHandler &statistics);
 
         /**
-         * Initialize this class for a given simulator. In addition to calling
-         * the respective function from the base class, this function also
-         * initializes all the visualization postprocessor plugins.
-         *
-         * @param simulator A reference to the main simulator object to which
-         * the postprocessor implemented in the derived class should be
-         * applied.
-         */
-        virtual void initialize (const Simulator<dim> &simulator);
-
-
-        /**
          * A function that is used to register visualization postprocessor
          * objects in such a way that the Manager can deal with all of them
          * without having to know them by name. This allows the files in which
@@ -369,6 +357,19 @@ namespace aspect
          * containing the whole solution.
          */
         unsigned int group_files;
+
+        /**
+         * deal.II offers the possibility to linearly interpolate
+         * output fields of higher order elements to a finer resolution.
+         * This somewhat compensates the fact that most visualization
+         * software only offers linear interpolation between grid points
+         * and therefore the output file is a very coarse representation
+         * of the actual solution field. Activating this option increases
+         * the spatial resolution in each dimension by a factor equal
+         * to the polynomial degree used for the velocity finite element
+         * (usually 2).
+         */
+        bool interpolate_output;
 
         /**
          * Compute the next output time from the current one. In the simplest

@@ -142,8 +142,9 @@ Wolfgang Bangerth\\Timo Heister\\
     Jacky Austermann,
     Markus B{\"u}rg,
     Juliane Dannberg,
-    Ren{\'e} Ga{\ss}m{\"o}ller,
-    Thomas Geenen, \\
+    William Durkin,
+    Ren{\'e} Ga{\ss}m{\"o}ller, \\
+    Thomas Geenen,
     Anne Glerum,
     Ryan Grove,
     Eric Heien,
@@ -301,7 +302,7 @@ The manual's proper reference is this:
         title =        {\textsc{ASPECT}: Advanced Solver for Problems in Earth's
           ConvecTion},
         author =       {W. Bangerth and T. Heister and others},
-        organization = {Computational Infrastructure in Geodynamics},
+        organization = {Computational Infrastructure for Geodynamics},
         year = 	 2014
       }
 \end{lstlisting}
@@ -376,7 +377,7 @@ $c_i$ that we call \textit{compositional fields}:
   \label{eq:compositional}
   \frac{\partial c_i}{\partial t} + \mathbf u\cdot\nabla c_i
   &=
-  0
+  q_i
   & \quad
   & \textrm{in $\Omega$},
   i=1\ldots C
@@ -403,7 +404,7 @@ terms of this equation correspond to
 \item adiabatic compression of material;
 \item phase change.
 \end{itemize}
-The last term corresponds to
+The last term of the temperature equation corresponds to
 the latent heat generated or consumed in the process of phase change of material. The latent heat release
 is proportional to changes in the fraction of material $X$ that has already
 undergone the phase transition (also called phase function) and the change
@@ -457,13 +458,29 @@ which it is in fact implemented:
   \notag
 \end{align}
 
-\subsubsection{Comment on adiabatic heating}
-In other codes and texts there is sometimes a simplification made to the adiabatic heating term in the previous equation. If you assume the pressure gradient is assumed to be small in the vertical direction, then $ -\rho \mathbf g \approx \nabla \mathbf{p} $, and we have the following relation (the negative sign is due to $\mathbf g$ pointing downwards)
-\begin{align}
+The last of the equations above, equation~\eqref{eq:compositional}, describes
+the evolution of additional fields that are transported along with the
+velocity field $\mathbf u$ and may react with each other and react to other
+features of the solution, but that do not diffuse. We call these fields $c_i$
+\textit{compositional fields}, although they can also be used for other
+purposes than just tracking chemical compositions. We will discuss this
+equation in more detail in Section~\ref{sec:compositional}.
+
+\subsubsection{A comment on adiabatic heating}
+Other codes and texts sometimes make a simplification to the adiabatic heating
+term in the previous equation. If you assume the vertical component of the
+gradient of the \textit{dynamic} pressure to be small compared to the gradient
+of the \textit{total} pressure (in other words, the gradient is dominated by
+the gradient of the hydrostatic pressure), then $ -\rho \mathbf g \approx
+\nabla \mathbf{p} $, and we have the following relation (the negative sign is
+due to $\mathbf g$ pointing downwards) 
+\begin{align*}
 \alpha T \left( \mathbf u \cdot \nabla \mathbf p \right)
   & \approx -\alpha \rho T \mathbf u \cdot \mathbf g.
-  \notag
-\end{align}
+\end{align*}
+While this simplification is possible, it is not necessary if you have access
+to the total pressure. \aspect{} therefore implements the original term
+without this simplification.
 
 \subsubsection{Boundary conditions}
 Having discussed \eqref{eq:temperature}, let us come to the last one of the
@@ -515,7 +532,7 @@ $\Gamma_{D,T}\cup\Gamma_{N,T}=\Gamma$. No boundary conditions have to be posed
 for the compositional fields at those parts of the boundary where flow is either
 tangential to the boundary or points outward.
 
-\subsubsection{Comment on final set of equations}
+\subsubsection{Comments on the final set of equations}
 \aspect{} solves these equations in essentially the form stated. In
 particular, the form given in \eqref{eq:stokes-1} implies that the pressure
 $p$ we compute is in fact the \textit{total pressure}, i.e., the sum of
@@ -547,7 +564,7 @@ parameterizations.
 
 Note that below we will discuss examples of the dependence of coefficients on
 other quantities; which dependence is actually implemented in the code is a
-different matter. As we will discuss in Section~\ref{sec:parameters} and
+different matter. As we will discuss in Sections~\ref{sec:parameters} and
 \ref{sec:extending}, some versions of these models are already implemented and
 can be selected from the input parameter file; others are easy to add to
 \aspect{} by providing self-contained descriptions of a set of coefficients
@@ -1011,6 +1028,80 @@ also selected in the input parameter file.
 
 
 
+\subsection{Compositional fields}
+\label{sec:compositional}
+
+The last of the basic equations, \eqref{eq:compositional}, describes the
+evolution of a set of variables $c_i(\mathbf x, t), i=1\ldots C$ that we
+typically call \textit{compositional fields} and that we often aggregate into
+a vector $\mathfrak c$.
+
+Compositional fields were originally intended to track what their name
+suggest, namely the chemical composition of the convecting medium. In this
+interpretation, they composition is a quantity that is simply advected along
+passively, i.e., it would satisfy the equation
+\begin{align*}
+  \frac{\partial \mathfrak c}{\partial t} + \mathbf u \cdot \nabla \mathfrak c
+  = 0.
+\end{align*}
+However, these compositional fields participate in determining the values of
+the various coefficients as discussed in Section~\ref{sec:coefficients}.
+
+That said, over time compositional fields have shown to be a much more useful
+tool than originally intended. For example, they can be used to track where
+material comes from and goes to (see Section~\ref{sec:cookbooks-composition})
+and, if one allows for a reaction term on the right hand side,
+\begin{align*}
+  \frac{\partial \mathfrak c}{\partial t} + \mathbf u \cdot \nabla \mathfrak c
+  = \mathfrak q,
+\end{align*}
+then one can also model reactions between species -- for example to simulate
+phase changes where one compositional field indicating a particular phase
+transforms into another phase depending on pressure and temperature, or where
+several phases combine to other phases.
+
+Modeling reactions between different compositional fields often involves
+finding an equilibrium state between state between different fields because
+chemical reactions happen on a much faster time scale than transport. In other
+words, one then often assumes that there is a $\mathfrak c^\ast(p,T)$ so that
+\begin{align*}
+  \mathfrak q(p,T,\varepsilon(\mathbf u),\mathfrak c^\ast(p,T)) = 0.
+\end{align*}
+Consequently, the material model methods that deal with source terms for the
+compositional fields need to compute an \textit{increment} $\Delta\mathfrak c$
+to the previous value of the compositional fields so that the sum of the
+previous values and the increment equals $\mathfrak c^\ast$. This is opposed
+to the usual approach of evaluating the right hand side term $\mathfrak q$,
+which corresponds to a \textit{rate}, instead of an increment.
+
+On the other hand, there are other uses of compositional fields that do not
+actually have anything to do with quantities that can be considered related to
+compositions. For example, one may define a field that tracks the grain size
+of rocks. If the strain rate is high, then the grain size decreases as the
+rocks break. If the temperature is high enough, then grains heal and their size
+increases again. Such ``damage'' models would then call for an equation of the
+form (assuming one uses only a single compositional field)
+\begin{align*}
+  \frac{\partial c}{\partial t} + \mathbf u \cdot \nabla c
+  = q(T,c),
+\end{align*}
+where in the simplest case one could postulate
+\begin{align*}
+  q(T,c) = -\alpha c + \beta \max\{T-T_\text{healing},0\} c.
+\end{align*}
+One would then use this compositional field in the definition of the viscosity
+of the material: more damage means lower viscosity because the rocks are weaker.
+
+In cases like this, there is only a single compositional field and it is not
+in permanent equilibrium. Consequently, the increment implementations of
+material models in \aspect{} need to compute is typically the rate $q(T,c)$
+times the time step.
+
+Compositional fields have proven to be surprisingly versatile tools to model
+all sorts of components of models that go beyond the simple Stokes plus
+temperature set of equations. Play with them!
+
+
 \subsection{Numerical methods}
 
 There is no shortage in the literature for methods to solve the equations
@@ -1287,22 +1378,48 @@ community, where the acronym stands for \textit{Im}plicit \textit{P}ressure,
 
 
 
-\subsubsection{Compressible formula}
-In the compressible case, the conservation of mass equation becomes $\nabla \cdot \left( \rho \textbf{u} \right)= 0$ instead of $\nabla \cdot \textbf{u} = 0$, which is nonlinear and nonsymmetric (which makes preconditioning difficult). The following explanation describes what is done in \aspect{} for the linear solver to work.  Dividing by $\rho$ gives:
+\subsubsection{Compressible models}
+In the compressible case, the conservation of mass equation in
+equation~\eqref{eq:stokes-2} becomes $\nabla 
+\cdot \left( \rho \textbf{u} \right)= 0$ instead of $\nabla \cdot \textbf{u} =
+0$, which is nonlinear and no longer symmetric to the $\nabla p$ term in the
+force balance equation \eqref{eq:stokes-1}, making solving and preconditioning
+the resulting linear and nonlinear systems difficult. To make this work in
+\aspect{}, we consequently reformulate this equation. Dividing by $\rho$ and
+applying the product rule of differentiation gives
 \begin{equation*}
 \frac{1}{\rho} \nabla \cdot \left( \rho \textbf{u} \right) = \nabla \cdot \textbf{u} + \frac{1}{\rho} \nabla \rho \cdot  \textbf{u}.
 \end{equation*}
-Then we assume the change in density is dominated by the change in static pressure, which can be written as
-$\nabla p \approx \nabla p_s \approx \rho \textbf{g}$.
+We will now make two basic assumptions: First, the variation of the density
+$\rho(p,T,\mathbf x, \mathfrak c)$ is dominated by the dependence on the
+(total) pressure; in other words, $\nabla \rho \approx \frac{\partial \rho}{\partial
+  p}\nabla p$. This assumption is primarily justified by the fact that, in the
+Earth mantle, the density increases by at least 50\% between Earth crust and
+the core-mantle boundary due to larger pressure there. Secondly, we assume
+that the pressure is dominated by the static pressure, which can be written as
+$\nabla p \approx \nabla p_s \approx \rho \textbf{g}$. This is essentially
+motivated by the slowness of the movement in the Earth or, alternatively,
+based on the fact that the viscosity is so large.
 This finally allows us to write
 \begin{equation*}
 \frac{1}{\rho} \nabla \rho \cdot \textbf{u} \approx \frac{1}{\rho} \frac{\partial \rho}{\partial p} \nabla p \cdot \textbf{u} \approx \frac{1}{\rho} \frac{\partial \rho}{\partial p} \nabla p_s \cdot \textbf{u} \approx \frac{1}{\rho} \frac{\partial \rho}{\partial p} \rho \textbf{g} \cdot \textbf{u} 
 \end{equation*}
 so we get
-\begin{equation*}
-\nabla \cdot \textbf{u} = \frac{1}{\rho} \frac{\partial \rho}{\partial p} \rho \textbf{g} \cdot \textbf{u}
-\end{equation*}
-where $\frac{1}{\rho} \frac{\partial \rho}{\partial p}$ is the compressibility and $\rho$ and $\mathbf u$ are taken from the last time step.
+\begin{equation}
+\label{eq:stokes-2-compressible}
+\nabla \cdot \textbf{u} = -\frac{1}{\rho} \frac{\partial \rho}{\partial p} \rho \textbf{g} \cdot \textbf{u}
+\end{equation}
+where $\frac{1}{\rho} \frac{\partial \rho}{\partial p}$ is often referred to
+as the compressibility.
+
+In the implementation used in \aspect{}, this equation replaces
+\eqref{eq:stokes-2}. It has the advantage that it retains the symmetry of the
+Stokes equations if we can treat the right hand side of
+\eqref{eq:stokes-2-compressible} as known. We do so by evaluating $\rho$ and
+$\mathbf u$ using the solution from the last time step (or values extrapolated
+from previous time steps).
+
+
 
 \subsection{Free surface calculations}
 \label{sec:freesurface}
@@ -2071,8 +2188,9 @@ with the input file discussed in Section~\ref{sec:cookbooks-simple-box},
 simulating convection in a box. After running \aspect{}, you will find
 a file called \texttt{statistics} in the output directory that, at the time
 of writing this, looked like this:
-This file has a structure that looks like this:
-  \begin{lstlisting}[frame=single,language=ksh]
+This file has a structure that looks (at the time of writing this section)
+like this:
+\begin{lstlisting}[frame=single,language=ksh]
 # 1: Time step number
 # 2: Time (seconds)
 # 3: Number of mesh cells
@@ -2080,33 +2198,37 @@ This file has a structure that looks like this:
 # 5: Number of temperature degrees of freedom
 # 6: Iterations for temperature solver
 # 7: Iterations for Stokes solver
-# 8: Time step size (seconds)
-# 9: RMS velocity (m/s)
-# 10: Max. velocity (m/s)
-# 11: Minimal temperature (K)
-# 12: Average temperature (K)
-# 13: Maximal temperature (K)
-# 14: Average nondimensional temperature (K)
-# 15: Outward heat flux through boundary with indicator 0 (W)
-# 16: Outward heat flux through boundary with indicator 1 (W)
-# 17: Outward heat flux through boundary with indicator 2 (W)
-# 18: Outward heat flux through boundary with indicator 3 (W)
-# 19: Visualization file name
-   0 0.0000e+00 256 2467 1089  1 22 1.2225e-02 1.79038621e+00 2.54812273e+00 ...
-   1 1.2225e-02 256 2467 1089 40 16 3.7409e-03 5.88727814e+00 8.34299267e+00 ...
-   2 1.5966e-02 256 2467 1089 25 15 2.0249e-03 1.08925316e+01 1.54185045e+01 ...
-   3 1.7991e-02 256 2467 1089 19 15 1.3658e-03 1.61586242e+01 2.28690070e+01 ...
-   4 1.9357e-02 256 2467 1089 16 14 1.0291e-03 2.14311381e+01 3.03519178e+01 ...
-   5 2.0386e-02 256 2467 1089 14 14 8.2853e-04 2.65966688e+01 3.76989179e+01 ...
-  \end{lstlisting}
+# 8: Velocity iterations in Stokes preconditioner
+# 9: Schur complement iterations in Stokes preconditioner
+# 10: Time step size (seconds)
+# 11: RMS velocity (m/s)
+# 12: Max. velocity (m/s)
+# 13: Minimal temperature (K)
+# 14: Average temperature (K)
+# 15: Maximal temperature (K)
+# 16: Average nondimensional temperature (K)
+# 17: Outward heat flux through boundary with indicator 0 ("left") (W)
+# 18: Outward heat flux through boundary with indicator 1 ("right") (W)
+# 19: Outward heat flux through boundary with indicator 2 ("bottom") (W)
+# 20: Outward heat flux through boundary with indicator 3 ("top") (W)
+# 21: Visualization file name
+ 0 0.0000e+00 256 2467 1089  0 29 30 29 1.2268e-02 1.79026783e+00 2.54322608e+00
+ 1 1.2268e-02 256 2467 1089 32 29 30 30 3.7388e-03 5.89844152e+00 8.35160076e+00
+ 2 1.6007e-02 256 2467 1089 20 28 29 29 2.0239e-03 1.09071922e+01 1.54298908e+01
+ 3 1.8031e-02 256 2467 1089 15 27 28 28 1.3644e-03 1.61759153e+01 2.28931189e+01
+ 4 1.9395e-02 256 2467 1089 13 26 27 27 1.0284e-03 2.14465789e+01 3.03731397e+01
+ 5 2.0424e-02 256 2467 1089 11 25 26 26 8.2812e-04 2.66110761e+01 3.77180480e+01
+ \end{lstlisting}
 
 In other words, it first lists what the individual columns mean with a hash
 mark at the beginning of the line and then has one line for each time step
-in which the individual columns list what has been explained above. In the
-example shown here, the first time step appears twice because we use a mesh
-that starts out globally refined and we then start the entire computation
-over again on a once adaptively refined mesh (see the parameters in
-Section~\ref{parameters:Mesh_20refinement} for how to do that).
+in which the individual columns list what has been explained above.%
+\footnote{With
+  input files that ask for initial adaptive refinement, the first time step may
+  appear twice because we solve on a mesh
+  that is globally refined and we then start the entire computation
+  over again on a once adaptively refined mesh (see the parameters in
+  Section~\ref{parameters:Mesh_20refinement} for how to do that).}
 
 This file is easy to visualize. For example, one can import it as a whitespace
 separated file into a spreadsheet such as Microsoft Excel or OpenOffice/LibreOffice
@@ -2138,11 +2260,11 @@ gnuplot>
 \end{lstlisting}
 At the prompt on the last line, you can then enter commands. Given the
 description of the individual columns given above, let us first try to
-plot the heat flux through boundary 2 (which in this case is the bottom
-boundary of the box), i.e., column 17, as a function of time (column 2).
+plot the heat flux through boundary 2 (the bottom
+boundary of the box), i.e., column 19, as a function of time (column 2).
 This can be achieved using the following command:
 \begin{lstlisting}[frame=single,language=gnuplot]
-  plot "statistics" using 2:17
+  plot "statistics" using 2:19
 \end{lstlisting}
 The left panel of Fig.~\ref{fig:viz-gnuplot-1} shows what \texttt{Gnuplot}
 will display in its output window. There are many things one can
@@ -2152,14 +2274,14 @@ use not just points but lines and points for the curves,
 restrict the time axis to the range $[0,0.2]$ and the heat flux axis to
 $[-10:10]$,
 plot not only the flux through the bottom but also through the top boundary
-(column 18) and finally add a key to the figure, then the following
+(column 20) and finally add a key to the figure, then the following
 commands achieve this:
 \begin{lstlisting}[frame=single,language=gnuplot]
   set xlabel "Time"
   set ylabel "Heat flux"
   set style data linespoints
-  plot [0:0.2][-10:10] "statistics" using 2:17 title "Bottom boundary", \
-                       "statistics" using 2:18 title "Top boundary"
+  plot [0:0.2][-10:10] "statistics" using 2:19 title "Bottom boundary", \
+                       "statistics" using 2:20 title "Top boundary"
 \end{lstlisting}
 If a line gets too long, you can continue it by ending it in a backslash as
 above. This is rarely used on the command line but useful when writing the
@@ -2190,10 +2312,10 @@ the following abbreviated form would have achieved the same effect:
   se xl "Time"
   se yl "Heat flux"
   se sty da lp
-  pl [:0.2][-10:10] "statistics" us 2:17 t "Bottom boundary", "" us 2:18 t "Top boundary"
+  pl [:0.2][-10:10] "statistics" us 2:19 t "Bottom boundary", "" us 2:20 t "Top boundary"
 \end{lstlisting}
 This is of course unreadable at first but becomes useful once you become
-more familiar with the command offered by this program.
+more familiar with the commands offered by this program.
 
 Once you have gotten the commands that create the plot you want right, you probably
 want to save it into a file. \texttt{Gnuplot} can write output in many
@@ -2723,6 +2845,30 @@ $y$-directions. Of course, there are other geometries you can choose from for
 the \texttt{Model name} parameter, and consequently other subsections that
 specify the details of these geometries.
 
+Similarly, you describe boundary conditions using parameters such as this:
+%
+\lstinputlisting[language=prmfile]{cookbooks/overview/boundary-conditions.part.prm}
+%
+This snippet describes which of the four boundaries of the two-dimensional box
+we have selected above should have a prescribed temperature or an insulating
+boundary, and at which parts of the boundary we want zero, tangential or
+prescribed velocities.%
+\footnote{Internally, the geometry models \aspect{} uses label every part of
+  the boundary with what is called a \textit{boundary indicator} -- a number
+  that identifies pieces of the boundary. If you know which number each piece
+  has, you can list these numbers on the right hand sides of the assignments
+  of boundary types above. For example, the left boundary of the box has
+  boundary indicator zero (see Section~\ref{parameters:Geometry_20model}), and
+  using this number instead of the \texttt{left} would have been equally
+  valid. However, numbers are far more difficult to remember than names, and
+  consequently every geometry model provides string aliases such as
+  ``\texttt{left}'' for each boundary indicator describing parts of the
+  boundary. These symbolic aliases are specific to the geometry -- for the
+  box, they are ``\texttt{left}'', ``\texttt{right}'', ``\texttt{bottom}'',
+  etc., whereas for a spherical shell they are ``\texttt{inner}'' and
+  ``\texttt{outer}'' -- but are described in the documentation of every
+  geometry model, see Section~\ref{parameters:Geometry_20model}.}
+
 If you go down the list of questions about the setup above, you have already
 done the majority of the work describing your computation. The remaining
 parameters you will typically want to specify have to do with the computation
@@ -2773,7 +2919,7 @@ temperature. This leads to the following set of equations:
   & \textrm{in $\Omega$}.
 \end{align}
 It is well known that we can non-dimensionalize this set of equations by
-choosing introducing the Raleigh number $Ra=\frac{g\alpha}{\eta k}$. Formally,
+introducing the Raleigh number $Ra=\frac{g\alpha}{\eta k}$. Formally,
 we can obtain the non-dimensionalized equations by using the above form and
 setting coefficients in the following way:
 \begin{align*}
@@ -4039,6 +4185,100 @@ After running the cookbook, you may modify it in a number of ways:
 \end{figure}
 
 
+\subsubsection{Using a free surface in a model with a crust}
+\label{sec:cookbooks-freesurfaceWC}
+
+\textit{This section was contributed by William Durkin}.
+
+This cookbook is a modification of the previous example that explores changes in the way topography develops when a 
+highly viscous crust is added.  
+In this cookbook, we use a material model in which the material changes from low
+viscosity mantle to high viscosity crust at $z = z_j = \texttt{jump height}$,
+i.e., the piecewise viscosity function is defined as
+\begin{align*}
+  \eta(z) = \left\{
+    \begin{matrix}
+      \eta_U & \text{for}\ z > z_j, \\
+      \eta_L & \text{for}\ z  \le z_j.
+    \end{matrix}
+  \right.
+\end{align*}
+where $\eta_U$ and $\eta_L$ are the viscosities of the upper and lower layers,
+respectively. This viscosity model can be implemented by creating a plugin that
+is a small modification of the \texttt{simpler} material model (from which it
+is otherwise simply copied). We call this material model ``SimplerWithCrust''.
+In particular, what is necessary is an evaluation function that looks like this:
+\begin{lstlisting}[frame=single,language=C++] 
+    template <int dim>
+    void
+    SimplerWithCrust<dim>::
+    evaluate(const typename Interface<dim>::MaterialModelInputs &in, 
+              typename Interface<dim>::MaterialModelOutputs &out ) const
+    {
+      for (unsigned int i=0; i<in.position.size(); ++i)
+        { 
+          const double z = in.position[i][1];
+
+	  if (z>jump_height)
+	    out.viscosities[i] = eta_U;
+	  else
+	    out.viscosities[i] = eta_L;
+                     
+          out.densities[i] = reference_rho*(1.0-thermal_alpha*(in.temperature[i]-reference_T));
+          out.thermal_expansion_coefficients[i] = thermal_alpha;
+          out.specific_heat[i] = reference_specific_heat;
+          out.thermal_conductivities[i] = k_value;
+          out.compressibilities[i] = 0.0;
+        }
+    }
+\end{lstlisting}
+Additional changes make the new parameters \texttt{Jump height}, \texttt{Lower
+viscosity}, and \texttt{Upper viscosity} available to the input parameter file,
+and corresponding variables available in the class and used in the code snippet
+above. The entire code can be found in
+\url{cookbooks/free-surface-with-crust/plugin/simpler-with-crust.cc}. Refer to
+Section~\ref{sec:plugins} for more information about writing and running
+plugins.
+
+The following changes are necessary compared to the input file from the
+cookbook shown in Section~\ref{sec:cookbooks-freesurface} to include a crust:
+\begin{itemize}
+  \item Load the plugin implementing the new material model:
+  \lstinputlisting[language=prmfile]{cookbooks/free_surface_with_crust/free-surface-wc.part1.prm.out}
+  
+  \item Declare values for the new parameters:
+  \lstinputlisting[language=prmfile]{cookbooks/free_surface_with_crust/free-surface-wc.part2.prm.out}
+  Note that the height of the interface at 170km is interpreted in the
+  coordinate system in which the box geometry of this cookbook lives. The box
+  has dimensions $500\text{km}\times 200\text{km}$, so an interface height of
+  170km implies a depth of 30km.
+\end{itemize}
+
+The entire script is located in
+\url{cookbooks/free-surface-with-crust/free-surface-with-crust.prm}.
+
+Running this input file yields a
+crust that is 30km thick and 1000 times as viscous as the lower layer.
+Figure~\ref{fig:freesurfaceWC} shows that adding a crust to the model causes the maximum topography to both decrease and occur at a later time.
+Heat flows through the system primarily by advection until the temperature anomaly reaches the base of the
+crustal layer (approximately at the time for which Fig~\ref{fig:freesurfaceWC}
+shows the temperature profile).
+The crust's high viscosity reduces the temperature anomaly's velocity
+substantially, causing it to affect the surface topography at a later time. Just
+as the cookbook shown in Section~\ref{sec:cookbooks-freesurface}, the
+topography returns to zero after some time.
+
+\begin{figure}
+  \centering
+  \includegraphics[height=0.25\textwidth]{cookbooks/free_surface_with_crust/free-surfaceWC.png}
+  \hfill
+  \includegraphics[height=0.25\textwidth]{cookbooks/free_surface_with_crust/Topography.png}
+  \caption{\it Adding a viscous crust to a model with surface topography. The
+  thermal anomaly spreads horizontally as it collides with the highly viscous crust (left). The addition of a crustal layer both dampens and delays the appearance of the topographic maximum and minimum (right). }
+  \label{fig:freesurfaceWC}
+\end{figure}
+
+
 \subsection{Geophysical setups}
 \label{sec:cookbooks-geophysical}
 
@@ -4856,7 +5096,7 @@ purpose-built plugins, they are kept separate from the more generic plugins in
 the normal source tree. Instead, the benchmarks have all the necessary code in
 \texttt{.cc} files in the benchmark directories. Those are then compiled into a shared
 library that will be used by \aspect{} if it is referenced in a \texttt{.prm}
-file. Let's take the SolCx benchmark as an example (also see Section \ref{sec:benchmark-solcx}).
+file. Let's take the SolCx benchmark as an example (see Section \ref{sec:benchmark-solcx}).
 The directory contains:
 \begin{itemize}
  \item \texttt{solcx.cc} -- the code file containing a material model
@@ -4865,7 +5105,9 @@ The directory contains:
  \item \texttt{CMakeLists.txt} -- a cmake configuration that allows you to
    compile \texttt{solcx.cc}.
 \end{itemize}
-To be able to run the benchmarks you need to:
+To run this benchmark you need to follow the general outline of
+steps discussed in Section~\ref{sec:write-plugin}. For the current case, this
+amounts to the following:
 \begin{enumerate}
  \item Move into the directory of that particular benchmark:
 \begin{verbatim}
@@ -4875,8 +5117,12 @@ To be able to run the benchmarks you need to:
 \begin{verbatim}
  $ cmake .  
 \end{verbatim}
- If the script is unable to pick up where \aspect{} is installed, you can
- specify this using \texttt{-D ASPECT\_DIR=$<$...$>$}.
+ By default, \texttt{cmake} will look for the \aspect{} binary and other
+ information in a number of directories relative to the current one.
+ If it is unable to pick up where \aspect{} was built and installed, you can
+ specify this directory explicitly this using \texttt{-D
+   ASPECT\_DIR=$<$...$>$} as an additional flag to \texttt{cmake}, where
+ \texttt{$<$...$>$} is the path to the build directory.
  \item Build the library:
 \begin{verbatim}
  $ make
@@ -4887,10 +5133,10 @@ Finally, you can run \aspect{} with \texttt{solcx.prm}:
 \begin{verbatim}
  $ ../../aspect solcx.prm
 \end{verbatim}
-Note that you need to run \aspect{} from the current directory, because
-\texttt{solcx.prm} refers to the plugin as ``./libsolcx.so''. For more
-information about plugins in shared libraries see Section
-\ref{sec:write-plugin}.
+where again you may have to use the appropriate path to get to the \aspect{}
+executable. You will need to run \aspect{} from the current directory because
+\texttt{solcx.prm} refers to the plugin as \texttt{./libsolcx.so}, i.e., in
+the current directory.
 
 
 
@@ -5752,6 +5998,291 @@ $T_2 = 1109.08 \, \text{K}$, demonstrating that we converge to the correct
 solution.
 
 
+\subsubsection{The 2D cylindrical shell benchmarks by Davies et al.}
+\label{sec:benchmark-2D_cylindrical_shell}
+
+\textit{This section was contributed by William Durkin and Wolfgang Bangerth.}
+
+All of the benchmarks presented so far take place in a Cartesian domain. 
+Davies et al.~describe a benchmark (in a paper that is currently still being
+written) for a 2D spherical Earth that is  
+nondimensionalized such that 
+\begin{table*}[h]
+ \centering
+ \begin{tabular}{ l l }
+    $r_{\min}$ = 1.22 &  $\left. T \right|_{r_{min}}$ = 1 \\
+    $r_{\max}$ = 2.22 &  $\left. T \right|_{r_{max}}$ = 0
+ \end{tabular}
+\end{table*}
+
+The benchmark is run for a series of approximations (Boussinesq, Extended Boussinesq,
+Truncated Anelastic Liquid, and Anelastic Liquid), and temperature, velocity, and heat flux 
+calculations are compared with the results of other mantle modeling programs. \aspect{}
+will output all of these values directly except for the Nusselt number, which
+we must calculate ourselves from the heat fluxes that \aspect{} can compute.
+The Nusselt number of the top and bottom surfaces, ${Nu}_T$ and ${Nu}_B$,
+respectively, are defined by the authors of the benchmarks as
+\begin{equation}
+\label{eq:davies-NuTop}
+{Nu}_{T} = \frac{\ln(f)}{2{\pi}r_{\max}(1-f)}\int \limits_{0}^{2\pi} \frac{\partial T}{\partial r}\, d\theta  \\
+\end{equation}
+and
+\begin{equation*}
+\label{eq:davies-NuBottom}
+{Nu}_{B} = \frac{f \ln(f)}{2{\pi}r_{\min}(1-f)}\int \limits_{0}^{2\pi} \frac{\partial T}{\partial r}\, d\theta \\
+\end{equation*}
+where $f$ is the ratio $\frac{r_{\min}}{r_{\max}}$.
+
+We can put this in terms of heat flux
+\begin{equation*}
+	q_r = -k\frac{\partial T}{\partial r}
+\end{equation*}
+through the inner and outer surfaces,
+where $q_r$ is heat flux in the radial direction. Let $Q$ be the total heat that flows throug a surface,
+\begin{equation*}
+  Q = \int \limits_{0}^{2\pi} q_r\, d\theta,
+\end{equation*}
+then \eqref{eq:davies-NuTop} becomes
+\begin{equation*}
+  {Nu}_{T} = \frac{-Q_{T}\ln(f)}{2\pi{r_{\max}}(1-f)k}
+\end{equation*}
+and similarly
+\begin{equation*}
+  {Nu}_{B} = \frac{-Q_{B}f\ln(f)}{2\pi{r_{\min}}(1-f)k}.
+\end{equation*} 
+$Q_T$ and $Q_B$ are heat fluxes that \aspect{} can readily compute through the
+\texttt{heat flux statistics} postprocessor (see
+Section~\ref{parameters:Postprocess/List of postprocessors}).
+For further details on the nondimensionalization and equations used for each
+approximation, refer to Davies et al.
+
+The series of benchmarks is then defined by a number of cases relating to the
+exact equations chosen to model the fluid. We will discuss these in the
+following.
+
+
+\paragraph{Case 1.1: BA\_Ra104\_Iso\_ZS}
+\label{sec:davies-case11_BA}
+
+This case is run with the following settings:
+\begin{itemize}
+\item Boussinesq Approximation
+\item Boundary Condition: Zero-Slip
+\item Rayleigh Number = $10^4$ 
+\item Initial Conditions: $D = 0, O = 4$
+\item $\eta(T) = 1$
+\end{itemize}
+where $D$ and $O$ refer to the degree and order of a spherical harmonic that describes the 
+initial temperature. While the initial conditions matter, what is important
+here though is that the system evolve to four convective cells since we are
+only interested in the long term, steady state behavior.
+
+The model is relatively straightforward to set up, basing the input file on
+that discussed in Section~\ref{sec:shell-simple-2d}. The full input file can
+be found at \url{benchmark/davies_et_al/case-1.1.prm}, with the interesting
+parts excerpted as follows:
+
+\lstinputlisting[language=prmfile]{cookbooks/benchmarks/davies_et_al/case-1.1.prm.out}
+
+We use the same trick here as in Section~\ref{sec:cookbooks-simple-box} to
+produce a model in which the density $\rho(T)$ in the temperature equation
+\eqref{eq:temperature} is almost constant (namely, by choosing a very small
+thermal expansion coefficient) as required by the benchmark, and instead
+prescribe the desired Rayleigh number by choosing a correspondingly large
+gravity.
+
+Results for this and the other cases are shown below.
+
+
+\paragraph{Case 2.1: BA\_Ra104\_Iso\_FS}
+\label{sec:davies-case21_BA}
+
+Case 2.1 uses the following setup, differing only in the boundary conditions:
+\begin{itemize}
+\item Boussinesq Approximation
+\item Boundary Condition: Free-Slip
+\item Rayleigh Number = $10^4$ 
+\item Initial Conditions: $D = 0, O = 4$
+\item $\eta(T) = 1$
+\end{itemize}
+
+As a consequence of the free slip boundary conditions, any solid body rotation
+of the entire system satisfies the Stokes equations with their boundary
+conditions. In other words, the solution of the problem is not unique: given a
+solution, adding a solid body rotation yields another solution. We select
+arbitrarily the one that has no net rotation (see
+Section~\ref{parameters:Model_20settings}). The section in the input file 
+that is relevant is then as follows (the full input file resides at
+\url{benchmark/davies_et_al/case-2.1.prm}):
+\index[prmindex]{Remove nullspace}
+\index[prmindexfull]{Model settings!Remove nullspace}
+
+\lstinputlisting[language=prmfile]{cookbooks/benchmarks/davies_et_al/case-2.1.prm.out}
+
+Again, results are shown below.
+
+
+\paragraph{Case 2.2: BA\_Ra105\_Iso\_FS}
+\label{sec:davies-case22_BA}
+
+Case 2.2 is described as follows:
+\begin{itemize}
+\item Boussinesq Approximation
+\item Boundary Condition: Free-Slip
+\item Rayleigh Number = $10^5$ 
+\item Initial Conditions: Final conditions of case 2.1 (BA\_Ra104\_Iso\_FS)
+\item $\eta(T) = 1$
+\end{itemize}
+In other words, we have an increased Rayleigh number and begin with the final
+steady state of case 2.1. To start the model where case 2.1 left off, the
+input file of case 2.1, \url{benchmark/davies_et_al/case-2.1.prm}, instructs
+\aspect{} to checkpoint itself every few time steps (see
+Section~\ref{sec:checkpoint-restart}). If case 2.2 uses the same
+output directory, we can then resume the computations from this checkpoint with
+an input file that prescribes a different Rayleigh number and a later input time:
+
+\lstinputlisting[language=prmfile]{cookbooks/benchmarks/davies_et_al/case-2.2.prm.out}
+
+We increase the Rayleigh number to $10^5$ by increasing the magnitude of
+gravity in the input file.  The full script for case 2.2 is located in
+\url{benchmark/davies_et_al/case-2.2.prm}
+
+
+\paragraph{Case 2.3: BA\_Ra103\_vv\_FS}
+\label{sec:davies-case23_BA}
+
+Case 2.3 is a variation on the previous one:
+\begin{itemize}
+\item Boussinesq Approximation
+\item Boundary Condition: Free-Slip
+\item Rayleigh Number = $10^3$ 
+\item Initial Conditions: Final conditions of case 2.1 (BA\_Ra104\_Iso\_FS)
+\item $\eta(T) = 1000^{-T}$
+\end{itemize}
+The Rayleigh number is smaller here (and is selected using the gravity
+parameter in the input file, as before), but the more important change is that the
+viscosity is now a function of temperature. At the time of writing, there is
+no material model that would implement such a viscosity, so we
+create a plugin that does so for us (see Sections~\ref{sec:extending} and
+\ref{sec:write-plugin} in
+general, and Section~\ref{sec:material-models} for material models in
+particular). The code for it is located in 
+\url{benchmarks/davies_et_al/case-2.3-plugin/VoT.cc} (where ``VoT'' is short
+for ``viscosity as a function of temperature'') and is essentially a copy of
+the \texttt{simpler} material model. The primary change compared to the 
+\texttt{simpler} material model is the line about the viscosity in the
+following function:
+\begin{lstlisting}[frame=single,language=C++]
+template <int dim>
+void
+VoT<dim>::
+evaluate(const typename Interface<dim>::MaterialModelInputs &in,
+         typename Interface<dim>::MaterialModelOutputs &out) const
+{
+  for (unsigned int i=0; i<in.position.size(); ++i)
+    {
+      out.viscosities[i] = eta*std::pow(1000,(-in.temperature[i]));
+      out.densities[i] = reference_rho * (1.0 - thermal_alpha * (in.temperature[i] - reference_T));
+      out.thermal_expansion_coefficients[i] = thermal_alpha;
+      out.specific_heat[i] = reference_specific_heat;
+      out.thermal_conductivities[i] = k_value;
+      out.compressibilities[i] = 0.0;
+    }
+}
+\end{lstlisting}
+Using the method described in Sections~\ref{sec:benchmark-run} and
+\ref{sec:write-plugin}, and the files in 
+the \texttt{benchmarks/davies\_et\_al/case-2.3-plugin}, we can compile our new
+material model into a shared library that we can then reference from the input file.
+The complete input file for case 2.3 is located in
+\url{benchmark/davies_et_al/case-2.3.prm} and contains among others the
+following parts:
+
+\lstinputlisting[language=prmfile]{cookbooks/benchmarks/davies_et_al/case-2.3.prm.out}
+
+
+\paragraph{Results}
+
+In the following, let us discuss some of the results of the benchmark setups
+discussed above. First, the final steady state temperature fields are shown in
+Fig.~\ref{fig:davies-2DcylinderFSS}. It is immediately obvious how the
+different Rayleigh numbers affect the width of the plumes. If one imagines a
+setup with constant gravity, constant inner and outer temperatures and
+constant thermal expension coefficient (this is not how we describe it in the
+input files, but we could have done so and it is closer to how we intuit about
+fluids than adjusting the gravity), then the Rayleigh number is inversely
+proportional to the viscosity -- and it is immediately clear that larger
+Rayleigh numbers (corresponding to lower viscosities) then lead to thinner
+plumes. This is nicely reflected in the visualizations.
+
+\begin{figure}[h]
+  \subfigure[Case 1.1]{\includegraphics[width=0.23\textwidth]{cookbooks/benchmarks/davies_et_al/case11_final}}
+  \hfill
+  \subfigure[Case 2.1]{\includegraphics[width=0.23\textwidth]{cookbooks/benchmarks/davies_et_al/case21_final}}
+  \hfill
+  \subfigure[Case 2.2]{\includegraphics[width=0.23\textwidth]{cookbooks/benchmarks/davies_et_al/case22_final}}
+  \hfill
+  \subfigure[Case 2.3]{\includegraphics[width=0.23\textwidth]{cookbooks/benchmarks/davies_et_al/case23_final}}
+  \hfill
+  \caption{Davies et al.~benchmarks: Final steady state temperature fields for
+    the 2D cylindrical benchmark cases.}
+  \label{fig:davies-2DcylinderFSS}
+\end{figure}
+
+Secondly, Fig.~\ref{fig:davies-2DcylinderVrms} shows the root mean square
+velocity as a function of time for the various cases. It is obvious that they
+all converge to steady state solutions. However, there is an initial transient
+stage and, in cases 2.2 and 2.3, a sudden jolt to the system at the time where
+we switch from the model used to compute up to time $t=2$ to the
+different models used after that.
+
+\begin{figure}[h]
+  \subfigure[Case 1.1]{\includegraphics[width=0.48\textwidth]{cookbooks/benchmarks/davies_et_al/Case11Vrms}}
+  \hfill
+  \subfigure[Case 2.1]{\includegraphics[width=0.48\textwidth]{cookbooks/benchmarks/davies_et_al/Case21Vrms}}
+  \\
+  \subfigure[Case 2.2]{\includegraphics[width=0.48\textwidth]{cookbooks/benchmarks/davies_et_al/Case22Vrms}}
+  \hfill
+  \subfigure[Case 2.3]{\includegraphics[width=0.48\textwidth]{cookbooks/benchmarks/davies_et_al/Case23Vrms}}
+  \hfill
+  \caption{Davies et al.~benchmarks: $V_\text{rms}$ for 2D Cylindrical Cases. Large jumps occur when transitioning from case 2.1 to cases 2.2 and 2.3 due to the instantaneous change of parameter settings.}
+  \label{fig:davies-2DcylinderVrms}
+\end{figure}
+
+These runs also produce quantitative data that will be published along with
+the concise descriptions of the benchmarks and a comparison with other
+codes. In particular, some of the criteria listed above to judge the accuracy
+of results are listed in Table~\ref{tab:davies-et-al-results}.%
+\footnote{The input files available in the \texttt{benchmark/davies\_et\_al}
+  directory use 5 global refinements in order to provide cases that can be run
+  without excessive trouble on a normal computer. However, this is not enough
+  to achieve reasonable accuracy and both the data shown below and the data
+  submitted to the benchmarking effort uses 7
+  global refinement steps, corresponding to a mesh with 1536 cells in
+  tangential and 128 cells in radial direction. Computing on such meshes is
+  not cheap, as it leads to a problem size of more than 2.5 million
+  unknowns. It is best done using a parallel computation.}
+
+\begin{table}[tbp]
+  \centering
+  \begin{tabular}{|l|c|c|c|c|}
+    \hline
+    Case & $\left<T\right>$ & $Nu_T$ & $Nu_B$ & $V_\text{rms}$
+    \\ \hline
+    1.1 & 0.403 & 2.464 & 2.468 & 19.053 
+    \\ 
+    2.1 & 0.382 & 4.7000 & 4.706 & 46.244
+    \\ 
+    2.2 & 0.382 & 9.548 & 9.584 & 193.371
+    \\ 
+    2.3 & 0.582 & 5.102 & 5.121 & 79.632
+    \\ \hline
+  \end{tabular}
+  \caption{\it Davies et al. benchmarks: Numerical results for some of the output quantities required by the benchmarks and the various cases considered.}
+  \label{tab:davies-et-al-results}
+\end{table}
+ 
+
 
 \section{Extending \aspect}
 \label{sec:extending}
@@ -6202,7 +6733,8 @@ ASPECT_SETUP_PLUGIN(my_plugin)
  make
     \end{verbatim}
     and it should compile your plugin files into a shared library
-    \texttt{my\_plugin.so}. Of course, you may want to choose different names
+    \texttt{my\_plugin.so}. A concrete example of this process is discussed in
+    Section~\ref{sec:benchmark-run}. Of course, you may want to choose different names
     for the source files \texttt{source\_1.cc}, \texttt{source\_2.cc} or the name of
     the plugin \texttt{my\_plugin}.
 
@@ -6229,7 +6761,10 @@ files into a single shared library. In the latter case, you only need to list a
 single library in your input file, but each plugin will still be selectable in
 the various sections of your input file as long as each of your classes has a
 corresponding \texttt{ASPECT\_REGISTER\_*} statement somewhere in the file
-where you have its definition.}
+where you have its definition. An even simpler approach is to just put
+everything into a single file -- there is no requirement that different
+plugins are in separate files, though this is often convenient from a code
+organization point of view.}
 
 \note{If you choose to compile your plugins into a shared library yourself, you
   will need to recompile them every time you upgrade your \aspect{} installation
@@ -6251,7 +6786,8 @@ the equations that \aspect{} solves. To implement a new material model, you
 need to overload the \href{doc/doxygen/classaspect_1_1MaterialModel_1_1Interface.html}{aspect::MaterialModel::Interface} class and use
 the \texttt{ASPECT\_REGISTER\_MATERIAL\_MODEL} macro to register your new
 class. The implementation of the new class should be in namespace
-\texttt{aspect::MaterialModel}.
+\texttt{aspect::MaterialModel}. An example of a material model implemented
+this way is given in Section~\ref{sec:davies-case23_BA}.
 
 Specifically, your new class needs to implement the following interface:
 \begin{lstlisting}[frame=single,language=C++]
@@ -6402,17 +6938,23 @@ to solve the equations. A domain is described in \dealii{} by a coarse mesh
 and, if necessary, an object that characterizes the boundary. Together, these
 two suffice to reconstruct any domain by adaptively refining the coarse mesh
 and placing new nodes generated by refining cells onto the surface described
-by the boundary object. The geometry model is also responsible to describe to
-the rest of the code which parts of the boundary represent Dirichlet-type
+by the boundary object. The geometry model is also responsible for marking
+different parts of the boundary with different \textit{boundary indicators}
+for which one can then, in the input file, select whether these boundaries
+should be Dirichlet-type
 (fixed temperature) or Neumann-type (no heat flux) boundaries for the
-temperature, and where the velocity is considered zero or tangential to the
-boundary. This information is encoded in functions that return which boundary
-indicators represent these types of boundaries; in \dealii{}, a boundary
-indicator is a number attached to each piece of the boundary that can be used
-to represent the type of boundary a piece belongs to.
+temperature, and what kind of velocity conditions should hold there. In
+\dealii{}, a boundary indicator is a number of type
+\texttt{types::boundary\_id}, but since boundaries are hard to remember and
+get right in input files, geometry models also have a function that provide a
+map from symbolic names that can be used to describe pieces of the boundary to
+the corresponding boundary indicators. For example, the simple \texttt{box}
+geometry model in 2d provides the map
+\texttt{\{"left"$\rightarrow$0, "right"$\rightarrow$1,
+"bottom"$\rightarrow$2,"top"$\rightarrow$3\}}, and we have consistently used
+these symbolic names in the input files used in this manual.
 
-To implement a new geometry model, you
-need to overload the
+To implement a new geometry model, you need to overload the
 \href{doc/doxygen/classaspect_1_1GeometryModel_1_1Interface.html}{aspect::GeometryModel::Interface}
 class and use
 the \texttt{ASPECT\_REGISTER\_GEOMETRY\_MODEL} macro to register your new
@@ -6445,6 +6987,10 @@ Specifically, your new class needs to implement the following basic interface:
         virtual
         std::set<types::boundary_id_t>
         get_used_boundary_indicators () const = 0;
+
+        virtual
+        std::map<std::string,types::boundary_id>
+        get_symbolic_boundary_names_map () const;
 
         static
         void

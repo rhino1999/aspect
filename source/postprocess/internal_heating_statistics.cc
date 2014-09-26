@@ -70,8 +70,8 @@ namespace aspect
           {
             fe_values.reinit (cell);
             fe_values[this->introspection().extractors.temperature]
-                      .get_function_values (this->get_solution(),
-                                            in.temperature);
+            .get_function_values (this->get_solution(),
+                                  in.temperature);
             fe_values[this->introspection().extractors.pressure]
                       .get_function_values (this->get_solution(),
                                             in.pressure);
