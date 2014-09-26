@@ -108,7 +108,7 @@ namespace aspect
                             const Tensor<1,dim>          &velocity,
                             const Point<dim>             &position,
                             const unsigned int            field_index,
-                            const bool                    crossed_transition) const
+                            const int                     crossed_transition) const
     {
       // we want to iterate over the grain size evolution here, as we solve in fact an ordinary differential equation
       // and it is not correct to use the starting grain size (and introduces instabilities)
@@ -206,8 +206,8 @@ namespace aspect
           this->get_timestep_number() > 0)
         {
           // check if material has crossed any phase transition, if yes, reset grain size
-          for (unsigned int k=0;k<transition_depths.size();++k)
-            if (crossed_transition && recrystallized_grain_size[k] > 0.0)
+          if (crossed_transition != -1)
+            if (recrystallized_grain_size[crossed_transition] > 0.0)
               phase_grain_size_reduction = grain_size - recrystallized_grain_size[k];
         }
       else if (this->introspection().name_for_compositional_index(field_index) == "pyroxene_grain_size")
@@ -464,11 +464,11 @@ namespace aspect
     DamageRheology<dim>::
     evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const
     {
-      // set up a vector that tells us if a phase transition has been crossed inside of the cell
-      std::vector<bool> crossed_transition(in.position.size(),false);
-
       for (unsigned int i=0; i<in.position.size(); ++i)
         {
+          // set up an integer that tells us which phase transition has been crossed inside of the cell
+          int crossed_transition(-1);
+
           for (unsigned int j=0; j<in.position.size(); ++j)
             for (unsigned int k=0;k<transition_depths.size();++k)
               if((phase_function(in.position[i], in.temperature[i], in.pressure[i], k)
@@ -476,7 +476,7 @@ namespace aspect
                   &&
                   ((in.velocity[i] * this->get_gravity_model().gravity_vector(in.position[i]))
                   / ((in.position[i] - in.position[j]) * this->get_gravity_model().gravity_vector(in.position[i]) > 0)))
-                crossed_transition[i] = true;
+                crossed_transition = k;
 
           if (in.strain_rate.size() > 0)
             out.viscosities[i] = std::min(std::max(eta*1.e-5,viscosity(in.temperature[i],
