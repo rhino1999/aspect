@@ -498,14 +498,31 @@ namespace aspect
           // set up an integer that tells us which phase transition has been crossed inside of the cell
           int crossed_transition(-1);
 
-          for (unsigned int j=0; j<in.position.size(); ++j)
-            for (unsigned int k=0;k<transition_depths.size();++k)
-              if((phase_function(in.position[i], in.temperature[i], in.pressure[i], k)
-                  != phase_function(in.position[j], in.temperature[j], in.pressure[j], k))
+          if (this->get_adiabatic_conditions().is_initialized())
+            for (unsigned int phase=0;phase<transition_depths.size();++phase)
+              {
+                // first, get the pressure at which the phase transition occurs normally
+                const Point<dim,double> transition_point = this->get_geometry_model().representative_point(transition_depths[phase]);
+                const double transition_pressure = this->get_adiabatic_conditions().pressure(transition_point);
+
+                // then calculate the deviation from the transition point (both in temperature
+                // and in pressure)
+                double pressure_deviation = in.pressure[i] - transition_pressure
+                                            - transition_slopes[phase] * (in.temperature[i] - transition_temperatures[phase]);
+                if ((std::abs(pressure_deviation) < 1.0e9)
                   &&
-                  ((in.velocity[i] * this->get_gravity_model().gravity_vector(in.position[i]))
-                  * ((in.position[i] - in.position[j]) * this->get_gravity_model().gravity_vector(in.position[i])) > 0))
-                crossed_transition = k;
+                  ((in.velocity[i] * this->get_gravity_model().gravity_vector(in.position[i])) * pressure_deviation > 0))
+                  crossed_transition = phase;
+              }
+          else
+            for (unsigned int j=0; j<in.position.size(); ++j)
+              for (unsigned int k=0;k<transition_depths.size();++k)
+                if((phase_function(in.position[i], in.temperature[i], in.pressure[i], k)
+                    != phase_function(in.position[j], in.temperature[j], in.pressure[j], k))
+                    &&
+                    ((in.velocity[i] * this->get_gravity_model().gravity_vector(in.position[i]))
+                    * ((in.position[i] - in.position[j]) * this->get_gravity_model().gravity_vector(in.position[i])) > 0))
+                  crossed_transition = k;
 
           if (in.strain_rate.size() > 0)
             out.viscosities[i] = std::min(std::max(eta*1.e-5,viscosity(in.temperature[i],
