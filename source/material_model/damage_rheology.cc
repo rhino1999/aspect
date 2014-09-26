@@ -76,6 +76,35 @@ namespace aspect
         }
     }
 
+
+    template <int dim>
+    unsigned int
+    DamageRheology<dim>::
+    thermodynamic_phase (const double temperature,
+                         const double pressure,
+                         const std::vector<double> & /*composition*/) const
+    {
+      unsigned int phase_index = 0;
+      for (unsigned int phase=0;phase<transition_depths.size();phase++)
+        {
+          // first, get the pressure at which the phase transition occurs normally
+          const Point<dim,double> transition_point = this->get_geometry_model().representative_point(transition_depths[phase]);
+          const double transition_pressure = this->get_adiabatic_conditions().pressure(transition_point);
+
+          // then calculate the deviation from the transition point (both in temperature
+          // and in pressure)
+          double pressure_deviation = pressure - transition_pressure
+                                      - transition_slopes[phase] * (temperature - transition_temperatures[phase]);
+
+          // last, calculate the percentage of material that has undergone the transition
+          if (pressure_deviation > 0)
+            phase_index = phase+1;
+        }
+
+      return phase_index;
+    }
+
+
     template <int dim>
     unsigned int
     DamageRheology<dim>::
