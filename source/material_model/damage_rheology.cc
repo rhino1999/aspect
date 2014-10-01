@@ -244,10 +244,10 @@ namespace aspect
           phase_grain_size_reduction = 0.0;
         }
 
-      if (grain_size < 1.e-5)
+      if (grain_size < 5.e-6)
         {
-          std::cout << "Grain size is " << grain_size << "! It needs to be larger than 1e-5.\n";
-          grain_size = 1e-5;
+          std::cout << "Grain size is " << grain_size << "! It needs to be larger than 5e-6.\n";
+          grain_size = 5e-6;
         }
 
 //      if(!(grain_size - grain_size == 0))
@@ -503,13 +503,19 @@ namespace aspect
               {
                 // first, get the pressure at which the phase transition occurs normally
                 const Point<dim,double> transition_point = this->get_geometry_model().representative_point(transition_depths[phase]);
+                const Point<dim,double> transition_plus_width = this->get_geometry_model().representative_point(transition_depths[phase] + transition_widths[phase]);
+                const Point<dim,double> transition_minus_width = this->get_geometry_model().representative_point(transition_depths[phase] - transition_widths[phase]);
                 const double transition_pressure = this->get_adiabatic_conditions().pressure(transition_point);
+                const double pressure_width = 0.5 * (this->get_adiabatic_conditions().pressure(transition_plus_width)
+                                                     - this->get_adiabatic_conditions().pressure(transition_minus_width));
+
 
                 // then calculate the deviation from the transition point (both in temperature
                 // and in pressure)
                 double pressure_deviation = in.pressure[i] - transition_pressure
                                             - transition_slopes[phase] * (in.temperature[i] - transition_temperatures[phase]);
-                if ((std::abs(pressure_deviation) < 1.0e9)
+
+                if ((std::abs(pressure_deviation) < pressure_width)
                   &&
                   ((in.velocity[i] * this->get_gravity_model().gravity_vector(in.position[i])) * pressure_deviation > 0))
                   crossed_transition = phase;
@@ -612,6 +618,14 @@ namespace aspect
                              "Clapeyron slope given in Phase transition Clapeyron slopes. "
                              "List must have the same number of entries as Phase transition depths. "
                              "Units: $K$.");
+          prm.declare_entry ("Phase transition widths", "",
+                             Patterns::List (Patterns::Double(0)),
+                             "A list of widths for each phase transition. This is only use to specify "
+                             "the region where the recrystallized grain size is assigned after material "
+                             "has crossed a phase transition and should accordingly be chosen similar "
+                             "to the maximum cell width expected at the phase transition."
+                             "List must have the same number of entries as Phase transition depths. "
+                             "Units: $m$.");
           prm.declare_entry ("Phase transition Clapeyron slopes", "",
                              Patterns::List (Patterns::Double()),
                              "A list of Clapeyron slopes for each phase transition. A positive "
@@ -757,10 +771,13 @@ namespace aspect
           transition_phases         = Utilities::split_string_list (prm.get("Corresponding phase for transition"));
           recrystallized_grain_size = Utilities::string_to_double
                                       (Utilities::split_string_list(prm.get ("Recrystallized grain size")));
+          transition_widths         = Utilities::string_to_double
+                                      (Utilities::split_string_list(prm.get ("Phase transition widths")));
 
           if (transition_temperatures.size() != transition_depths.size() ||
               transition_slopes.size() != transition_depths.size() ||
               transition_phases.size() != transition_depths.size() ||
+              transition_widths.size() != transition_depths.size() ||
               recrystallized_grain_size.size() != transition_depths.size() )
             Assert(false,
                 ExcMessage("Error: At least one list that gives input parameters for the phase transitions has the wrong size."));

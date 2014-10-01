@@ -275,6 +275,7 @@ namespace aspect
         std::vector<double> transition_temperatures;
         std::vector<double> transition_slopes;
         std::vector<std::string> transition_phases;
+        std::vector<double> transition_widths;
     };
 
   }
