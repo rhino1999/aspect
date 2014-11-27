@@ -276,17 +276,24 @@ namespace aspect
                                 :
                                 0.0;
 
+      // Currently this will never be called without adiabatic_conditions initialized, but just in case
+      const double adiabatic_pressure = this->get_adiabatic_conditions().is_initialized()
+                                        ?
+                                        this->get_adiabatic_conditions().pressure(position)
+                                        :
+                                        pressure;
+
       // find out in which phase we are
-      const unsigned int ol_index = get_phase_index(position, temperature, pressure);
+      const unsigned int ol_index = get_phase_index(position, temperature, adiabatic_pressure);
 
       // TODO: we use the prefactors from Behn et al., 2009 as default values, but their laws use the strain rate
       // and we use the second invariant --> check if the prefactors should be changed
-      double energy_term = exp((diffusion_activation_energy[ol_index] + diffusion_activation_volume[ol_index] * abs(pressure))
+      double energy_term = exp((diffusion_activation_energy[ol_index] + diffusion_activation_volume[ol_index] * adiabatic_pressure)
                          / (diffusion_creep_exponent[ol_index] * gas_constant * temperature));
       if (this->get_adiabatic_conditions().is_initialized())
         {
           const double adiabatic_energy_term
-            = exp((diffusion_activation_energy[ol_index] + diffusion_activation_volume[ol_index] * abs(pressure))
+            = exp((diffusion_activation_energy[ol_index] + diffusion_activation_volume[ol_index] * adiabatic_pressure)
               / (diffusion_creep_exponent[ol_index] * gas_constant * this->get_adiabatic_conditions().temperature(position)));
 
           const double temperature_dependence = energy_term / adiabatic_energy_term;
@@ -316,15 +323,22 @@ namespace aspect
       const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
       const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
 
-      // find out in which phase we are
-      const unsigned int ol_index = get_phase_index(position, temperature, pressure);
+      // Currently this will never be called without adiabatic_conditions initialized, but just in case
+      const double adiabatic_pressure = this->get_adiabatic_conditions().is_initialized()
+                                        ?
+                                        this->get_adiabatic_conditions().pressure(position)
+                                        :
+                                        pressure;
 
-      double energy_term = exp((dislocation_activation_energy[ol_index] + dislocation_activation_volume[ol_index] * pressure)
+      // find out in which phase we are
+      const unsigned int ol_index = get_phase_index(position, temperature, adiabatic_pressure);
+
+      double energy_term = exp((dislocation_activation_energy[ol_index] + dislocation_activation_volume[ol_index] * adiabatic_pressure)
                          / (dislocation_creep_exponent[ol_index] * gas_constant * temperature));
       if (this->get_adiabatic_conditions().is_initialized())
         {
           const double adiabatic_energy_term
-            = exp((dislocation_activation_energy[ol_index] + dislocation_activation_volume[ol_index] * pressure)
+            = exp((dislocation_activation_energy[ol_index] + dislocation_activation_volume[ol_index] * adiabatic_pressure)
               / (dislocation_creep_exponent[ol_index] * gas_constant * this->get_adiabatic_conditions().temperature(position)));
 
           const double temperature_dependence = energy_term / adiabatic_energy_term;
