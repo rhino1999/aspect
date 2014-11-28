@@ -202,6 +202,8 @@ namespace aspect
         std::vector<double> diffusion_creep_prefactor;
         std::vector<double> diffusion_creep_grain_size_exponent;
         double max_temperature_dependence_of_eta;
+        double min_eta;
+        double max_eta;
 
         virtual double viscosity (const double                  temperature,
                                   const double                  pressure,

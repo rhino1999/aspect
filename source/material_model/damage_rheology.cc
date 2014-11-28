@@ -545,11 +545,11 @@ namespace aspect
                   crossed_transition = k;
 
           if (in.strain_rate.size() > 0)
-            out.viscosities[i] = std::min(std::max(eta*1.e-5,viscosity(in.temperature[i],
+            out.viscosities[i] = std::min(std::max(min_eta,viscosity(in.temperature[i],
                                                                        in.pressure[i],
                                                                        in.composition[i],
                                                                        in.strain_rate[i],
-                                                                       in.position[i])),eta*1.e5);
+                                                                       in.position[i])),max_eta);
 
           out.densities[i] = density(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
           out.thermal_expansion_coefficients[i] = thermal_alpha;
@@ -747,6 +747,18 @@ namespace aspect
                              "is introduced to limit local viscosity contrasts, but still allow for a widely "
                              "varying viscosity over the wole mantle range. "
                              "Units: none.");
+          prm.declare_entry ("Minimum viscosity", "1e18",
+                             Patterns::Double (0),
+                             "The minimum viscosity that is allowed in the whole model domain. This parameter "
+                             "is introduced to limit global viscosity contrasts, but still allows for a widely "
+                             "varying viscosity over the wole mantle range. "
+                             "Units: Pa s.");
+          prm.declare_entry ("Maximum viscosity", "1e26",
+                             Patterns::Double (0),
+                             "The maximum viscosity that is allowed in the whole model domain. This parameter "
+                             "is introduced to limit global viscosity contrasts, but still allows for a widely "
+                             "varying viscosity over the wole mantle range. "
+                             "Units: Pa s.");
         }
         prm.leave_subsection();
       }
@@ -838,6 +850,8 @@ namespace aspect
           diffusion_creep_grain_size_exponent   = Utilities::string_to_double
                                                   (Utilities::split_string_list(prm.get ("Diffusion creep grain size exponent")));
           max_temperature_dependence_of_eta     = prm.get_double ("Maximum temperature dependence of viscosity");
+          min_eta                               = prm.get_double ("Minimum viscosity");
+          max_eta                               = prm.get_double ("Maximum viscosity");
 
           if (grain_growth_activation_energy.size() != grain_growth_activation_volume.size() ||
               grain_growth_activation_energy.size() != grain_growth_rate_constant.size() ||
