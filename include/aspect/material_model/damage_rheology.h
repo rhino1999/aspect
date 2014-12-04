@@ -31,6 +31,11 @@ namespace aspect
   {
     using namespace dealii;
 
+    namespace Lookup
+    {
+      class MaterialLookup;
+    }
+
     /**
      * A material model that consists of globally constant values for all
      * material parameters except that the density decays linearly with the
@@ -48,6 +53,20 @@ namespace aspect
     class DamageRheology : public MaterialModel::Interface<dim>, public ::aspect::SimulatorAccess<dim>
     {
       public:
+        /**
+         * Initialization function. Loads the material data and sets up
+         * pointers.
+         */
+        virtual
+        void
+        initialize ();
+
+        /**
+         * Called at the beginning of each time step and allows the material
+         * model to update internal data structures.
+         */
+        virtual void update();
+
         /**
          * @name Qualitative properties one can ask a material model
          * @{
@@ -156,6 +175,22 @@ namespace aspect
                          const SymmetricTensor<2,dim> &strain_rate,
                          const Point<dim> &position) const;
 
+        /**
+         * Returns the p-wave velocity as calculated by HeFESTo.
+         */
+        virtual double seismic_Vp (const double      temperature,
+                                   const double      pressure,
+                                   const std::vector<double> &compositional_fields,
+                                   const Point<dim> &position) const;
+
+        /**
+         * Returns the s-wave velocity as calculated by HeFESTo.
+         */
+        virtual double seismic_Vs (const double      temperature,
+                                   const double      pressure,
+                                   const std::vector<double> &compositional_fields,
+                                   const Point<dim> &position) const;
+
       private:
         double reference_rho;
         double reference_T;
@@ -228,6 +263,20 @@ namespace aspect
                                 const std::vector<double> &compositional_fields,
                                 const Point<dim> &position) const;
 
+        virtual double compressibility (const double temperature,
+                                        const double pressure,
+                                        const std::vector<double> &compositional_fields,
+                                        const Point<dim> &position) const;
+
+        virtual double specific_heat (const double temperature,
+                                      const double pressure,
+                                      const std::vector<double> &compositional_fields,
+                                      const Point<dim> &position) const;
+
+        virtual double thermal_expansion_coefficient (const double      temperature,
+                                                      const double      pressure,
+                                                      const std::vector<double> &compositional_fields,
+                                                      const Point<dim> &position) const;
         /**
          * Rate of grain size growth (Ostwald ripening) or reduction
          * (due to phase transformations) in dependence on temperature
@@ -278,6 +327,31 @@ namespace aspect
         std::vector<double> transition_slopes;
         std::vector<std::string> transition_phases;
         std::vector<double> transition_widths;
+
+        std::string datadirectory;
+        std::vector<std::string> material_file_names;
+        std::vector<std::string> derivatives_file_names;
+        unsigned int n_material_data;
+        bool use_table_properties;
+        bool use_bilinear_interpolation;
+
+
+        /**
+         * The format of the provided material files. Currently we support
+         * the PERPLEX and HeFESTo data formats.
+         */
+        enum formats
+        {
+          perplex,
+          hefesto
+        } material_file_format;
+
+        /**
+         * List of pointers to objects that read and process data we get from
+         * Perplex files. There is one pointer/object per compositional field
+         * data provided.
+         */
+        std::vector<std_cxx1x::shared_ptr<MaterialModel::Lookup::MaterialLookup> > material_lookup;
     };
 
   }
