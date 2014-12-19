@@ -239,6 +239,10 @@ namespace aspect
         double max_temperature_dependence_of_eta;
         double min_eta;
         double max_eta;
+        double min_grain_size;
+
+        bool advect_log_gransize;
+
 
         virtual double viscosity (const double                  temperature,
                                   const double                  pressure,
@@ -320,6 +324,21 @@ namespace aspect
                          const double temperature,
                          const double pressure) const;
 
+        /**
+         * Function that takes an object in the same format
+         * as in.composition as argument and converts the
+         * vector that corresponds to the grain size to its
+         * logarithms and back and limits the grain size to
+         * a global minimum.
+         * @in normal_to_log: if true, convert from the grain
+         * size to its logarithm, otherwise from log to grain
+         * size
+         */
+        virtual
+        void
+        convert_log_grain_size (const bool normal_to_log,
+                                std::vector<double> &compositional_fields) const;
+
         // list of depth, width and Clapeyron slopes for the different phase
         // transitions and in which phase they occur
         std::vector<double> transition_depths;
@@ -328,6 +347,7 @@ namespace aspect
         std::vector<std::string> transition_phases;
         std::vector<double> transition_widths;
 
+        // TODO: Rene, make a comment what this stuff is for!
         std::string datadirectory;
         std::vector<std::string> material_file_names;
         std::vector<std::string> derivatives_file_names;

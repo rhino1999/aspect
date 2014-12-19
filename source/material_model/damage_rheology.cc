@@ -643,6 +643,29 @@ namespace aspect
     }
 
     template <int dim>
+    void
+    DamageRheology<dim>::
+    convert_log_grain_size (const bool normal_to_log,
+                            std::vector<double> &composition) const
+    {
+      // get grain size and limit it to a global minimum
+      const std::string field_name = "olivine_grain_size";
+      if(!this->introspection().compositional_name_exists(field_name))
+    	return;
+
+      double grain_size = composition[this->introspection().compositional_index_for_name(field_name)];
+
+      if (normal_to_log)
+    	grain_size = -std::log(std::max(grain_size,min_grain_size));
+      else
+      	grain_size = std::max(std::exp(-grain_size),min_grain_size);
+
+      composition[this->introspection().compositional_index_for_name(field_name)] = grain_size;
+
+      return;
+    }
+
+    template <int dim>
     double
     DamageRheology<dim>::
     grain_size_growth_rate (const double                  temperature,
@@ -784,6 +807,7 @@ namespace aspect
 
       // TODO: make this more general, for more phases we have to average grain size somehow
       // TODO: default when field is not given & warning
+      // limit the grain size to a global minimum
       const std::string field_name = "olivine_grain_size";
       const double grain_size = this->introspection().compositional_name_exists(field_name)
                                 ?
@@ -1208,6 +1232,11 @@ namespace aspect
     {
       for (unsigned int i=0; i<in.position.size(); ++i)
         {
+    	  // convert the grain size from log to normal
+    	  std::vector<double> composition (in.composition[i]);
+    	  if(advect_log_gransize)
+    		convert_log_grain_size(false,composition);
+
           // set up an integer that tells us which phase transition has been crossed inside of the cell
           int crossed_transition(-1);
 
@@ -1246,23 +1275,27 @@ namespace aspect
           if (in.strain_rate.size() > 0)
             out.viscosities[i] = std::min(std::max(min_eta,viscosity(in.temperature[i],
                                                                        in.pressure[i],
-                                                                       in.composition[i],
+                                                                       composition,
                                                                        in.strain_rate[i],
                                                                        in.position[i])),max_eta);
 
           out.densities[i] = density(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
           out.thermal_expansion_coefficients[i] = thermal_expansion_coefficient(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
-          out.specific_heat[i] = specific_heat(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
+          out.specific_heat[i] = specific_heat(in.temperature[i], in.pressure[i], composition, in.position[i]);
           out.thermal_conductivities[i] = k_value;
-          out.compressibilities[i] = compressibility(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
+          out.compressibilities[i] = compressibility(in.temperature[i], in.pressure[i], composition, in.position[i]);
 
           // TODO: make this more general for not just olivine grains
           if (in.strain_rate.size() > 0)
-            for (unsigned int c=0;c<in.composition[i].size();++c)
+            for (unsigned int c=0;c<composition.size();++c)
               {
                 if (this->introspection().name_for_compositional_index(c) == "olivine_grain_size")
-                  out.reaction_terms[i][c] = grain_size_growth_rate(in.temperature[i], in.pressure[i], in.composition[i],
+                {
+                  out.reaction_terms[i][c] = grain_size_growth_rate(in.temperature[i], in.pressure[i], composition,
                       in.strain_rate[i], in.velocity[i], in.position[i], c, crossed_transition);
+                  if(advect_log_gransize)
+                	out.reaction_terms[i][c] = - out.reaction_terms[i][c] / composition[c];
+                }
                 else
                   out.reaction_terms[i][c] = 0.0;
               }
@@ -1444,20 +1477,32 @@ namespace aspect
                              "are allowed to differ (a value of x means that the viscosity can be x times higher "
                              "or x times lower compared to the value at adiabatic temperature. This parameter "
                              "is introduced to limit local viscosity contrasts, but still allow for a widely "
-                             "varying viscosity over the wole mantle range. "
+                             "varying viscosity over the whole mantle range. "
                              "Units: none.");
           prm.declare_entry ("Minimum viscosity", "1e18",
                              Patterns::Double (0),
                              "The minimum viscosity that is allowed in the whole model domain. This parameter "
                              "is introduced to limit global viscosity contrasts, but still allows for a widely "
-                             "varying viscosity over the wole mantle range. "
+                             "varying viscosity over the whole mantle range. "
                              "Units: Pa s.");
           prm.declare_entry ("Maximum viscosity", "1e26",
                              Patterns::Double (0),
                              "The maximum viscosity that is allowed in the whole model domain. This parameter "
                              "is introduced to limit global viscosity contrasts, but still allows for a widely "
-                             "varying viscosity over the wole mantle range. "
+                             "varying viscosity over the whole mantle range. "
                              "Units: Pa s.");
+          prm.declare_entry ("Minimum grain size", "1e-5",
+                             Patterns::Double (0),
+                             "The minimum grain size that is used for the material model. This parameter "
+                             "is introduced to limit local viscosity contrasts, but still allows for a widely "
+                             "varying viscosity over the whole mantle range. "
+                             "Units: Pa s.");
+          prm.declare_entry ("Advect logarithm of grain size", "false",
+                             Patterns::Bool (),
+                             "Whether to advect the logarithm of the grain size or the "
+                             "grain size. The equation and the physics are the same, "
+                             "but for problems with high grain size gradients it might "
+                             "be preferable to advect the logarithm. ");
           prm.declare_entry ("Data directory", "$ASPECT_SOURCE_DIR/data/material-model/steinberger/",
                               Patterns::DirectoryName (),
                               "The path to the model data. The path may also include the special "
@@ -1537,7 +1582,7 @@ namespace aspect
               transition_phases.size() != transition_depths.size() ||
               transition_widths.size() != transition_depths.size() ||
               recrystallized_grain_size.size() != transition_depths.size() )
-            Assert(false,
+            AssertThrow(false,
                 ExcMessage("Error: At least one list that gives input parameters for the phase transitions has the wrong size."));
 
           // TODO: add assert that transition depths are in increasing order
@@ -1584,6 +1629,9 @@ namespace aspect
           max_temperature_dependence_of_eta     = prm.get_double ("Maximum temperature dependence of viscosity");
           min_eta                               = prm.get_double ("Minimum viscosity");
           max_eta                               = prm.get_double ("Maximum viscosity");
+          min_grain_size                        = prm.get_double ("Minimum grain size");
+
+          advect_log_gransize                   = prm.get_bool ("Advect logarithm of grain size");
 
           if (grain_growth_activation_energy.size() != grain_growth_activation_volume.size() ||
               grain_growth_activation_energy.size() != grain_growth_rate_constant.size() ||
@@ -1597,7 +1645,7 @@ namespace aspect
               grain_growth_activation_energy.size() != diffusion_activation_volume.size() ||
               grain_growth_activation_energy.size() != diffusion_creep_prefactor.size() ||
               grain_growth_activation_energy.size() != diffusion_creep_grain_size_exponent.size() )
-              Assert(false,
+              AssertThrow(false,
                 ExcMessage("Error: The lists of grain size evolution and flow law parameters "
                            "need to have the same length!"));
 
@@ -1606,16 +1654,16 @@ namespace aspect
               if(grain_growth_activation_energy.size() != grain_boundary_energy.size() ||
                  grain_growth_activation_energy.size() != boundary_area_change_work_fraction.size() ||
                  grain_growth_activation_energy.size() != geometric_constant.size() )
-                Assert(false,
+                AssertThrow(false,
                 ExcMessage("Error: One of the lists of grain size evolution parameters "
                            "given for the paleowattmeter does not have the correct length!"));
             }
           else
-              Assert(grain_growth_activation_energy.size() == reciprocal_required_strain.size(),
+              AssertThrow(grain_growth_activation_energy.size() == reciprocal_required_strain.size(),
               ExcMessage("Error: The list of grain size evolution parameters in the "
                          "paleopiezometer does not have the correct length!"));
 
-          Assert(grain_growth_activation_energy.size() == transition_depths.size()+1,
+          AssertThrow(grain_growth_activation_energy.size() == transition_depths.size()+1,
           ExcMessage("Error: The lists of grain size evolution and flow law parameters need to "
                      "have exactly one more entry than the number of phase transitions "
                      "(which is defined by the length of the lists of phase transition depths, ...)!"));
