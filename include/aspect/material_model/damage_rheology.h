@@ -240,6 +240,7 @@ namespace aspect
         double min_eta;
         double max_eta;
         double min_grain_size;
+        double pv_grain_size_scaling;
 
         bool advect_log_gransize;
 

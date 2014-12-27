@@ -1497,6 +1497,16 @@ namespace aspect
                              "is introduced to limit local viscosity contrasts, but still allows for a widely "
                              "varying viscosity over the whole mantle range. "
                              "Units: Pa s.");
+          prm.declare_entry ("Lower mantle grain size scaling", "1.0",
+                             Patterns::Double (0),
+                             "A scaling factor for the grain size in the lower mantle. In models where the "
+                             "high grain size contrast between the upper and lower mantle causes numerical "
+                             "problems, the grain size in the lower mantle can be scaled to a larger value, "
+                             "simultaneously scaling the viscosity prefactors and grain growth parameters "
+                             "to keep the same physical behavior. Differences to the original formulation "
+                             "only occur when material with a smaller grain size than the recrystallization "
+                             "grain size cross the upper-lower mantle boundary. "
+                             "Units: Pa s.");
           prm.declare_entry ("Advect logarithm of grain size", "false",
                              Patterns::Bool (),
                              "Whether to advect the logarithm of the grain size or the "
@@ -1630,6 +1640,11 @@ namespace aspect
           min_eta                               = prm.get_double ("Minimum viscosity");
           max_eta                               = prm.get_double ("Maximum viscosity");
           min_grain_size                        = prm.get_double ("Minimum grain size");
+          pv_grain_size_scaling                 = prm.get_double ("Lower mantle grain size scaling");
+
+          // scale diffusion creep and grain growth prefactor accordingly
+          diffusion_creep_prefactor[diffusion_creep_prefactor.size()-1] *= pow(pv_grain_size_scaling,grain_growth_exponent[grain_growth_exponent.size()-1]);
+          grain_growth_rate_constant[grain_growth_rate_constant.size()-1] /= pow(pv_grain_size_scaling,grain_growth_exponent[grain_growth_exponent.size()-1]-1);
 
           advect_log_gransize                   = prm.get_bool ("Advect logarithm of grain size");
 
