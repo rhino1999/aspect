@@ -1506,7 +1506,8 @@ namespace aspect
                              "to keep the same physical behavior. Differences to the original formulation "
                              "only occur when material with a smaller grain size than the recrystallization "
                              "grain size cross the upper-lower mantle boundary. "
-                             "Units: Pa s.");
+                             "The real grain size can be obtained by dividing the model grain size by this value. "
+                             "Units: none.");
           prm.declare_entry ("Advect logarithm of grain size", "false",
                              Patterns::Bool (),
                              "Whether to advect the logarithm of the grain size or the "
@@ -1595,7 +1596,10 @@ namespace aspect
             AssertThrow(false,
                 ExcMessage("Error: At least one list that gives input parameters for the phase transitions has the wrong size."));
 
-          // TODO: add assert that transition depths are in increasing order
+          if(transition_depths.size()>1)
+        	for(unsigned int i=0;i<transition_depths.size()-2;++i)
+        	  AssertThrow(transition_depths[i]<transition_depths[i+1],
+        		ExcMessage("Error: Phase transition depths have to be sorted in ascending order!"));
 
           // grain evolution parameters
           grain_growth_activation_energy        = Utilities::string_to_double
@@ -1642,9 +1646,16 @@ namespace aspect
           min_grain_size                        = prm.get_double ("Minimum grain size");
           pv_grain_size_scaling                 = prm.get_double ("Lower mantle grain size scaling");
 
-          // scale diffusion creep and grain growth prefactor accordingly
-          diffusion_creep_prefactor[diffusion_creep_prefactor.size()-1] *= pow(pv_grain_size_scaling,grain_growth_exponent[grain_growth_exponent.size()-1]);
-          grain_growth_rate_constant[grain_growth_rate_constant.size()-1] /= pow(pv_grain_size_scaling,grain_growth_exponent[grain_growth_exponent.size()-1]-1);
+          // scale recrystallized grain size, diffusion creep and grain growth prefactor accordingly
+          diffusion_creep_prefactor[diffusion_creep_prefactor.size()-1] *= pow(pv_grain_size_scaling,diffusion_creep_grain_size_exponent[diffusion_creep_grain_size_exponent.size()-1]);
+          grain_growth_rate_constant[grain_growth_rate_constant.size()-1] *= pow(pv_grain_size_scaling,grain_growth_exponent[grain_growth_exponent.size()-1]);
+          if(recrystallized_grain_size.size()>0)
+            recrystallized_grain_size[recrystallized_grain_size.size()-1] *= pv_grain_size_scaling;
+
+          if(use_paleowattmeter)
+        	boundary_area_change_work_fraction[boundary_area_change_work_fraction.size()-1] /= pv_grain_size_scaling;
+
+
 
           advect_log_gransize                   = prm.get_bool ("Advect logarithm of grain size");
 
