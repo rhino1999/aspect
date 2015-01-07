@@ -788,8 +788,6 @@ namespace aspect
           grain_size = 5e-6;
         }
 
-//      if(!(grain_size - grain_size == 0))
-//        std::cout << "Grain size change is not a number! It is " << grain_size << "! \n";
       return grain_size - original_grain_size - phase_grain_size_reduction;
     }
 
@@ -1236,6 +1234,9 @@ namespace aspect
     	  std::vector<double> composition (in.composition[i]);
     	  if(advect_log_gransize)
     		convert_log_grain_size(false,composition);
+    	  else
+    	    for (unsigned int c=0;c<composition.size();++c)
+    	      composition[c] = std::max(min_grain_size,composition[c]);
 
           // set up an integer that tells us which phase transition has been crossed inside of the cell
           int crossed_transition(-1);
@@ -1411,7 +1412,7 @@ namespace aspect
                              Patterns::List (Patterns::Double(0)),
                              "This parameters $\\lambda$ gives an estimate of the strain necessary "
                              "to achieve a new grain size. ");
-          prm.declare_entry ("Recrystallized grain size", "0.001",
+          prm.declare_entry ("Recrystallized grain size", "",
                              Patterns::List (Patterns::Double(0)),
                              "The grain size $d_{ph}$ to that a phase will be reduced to when crossing a phase transition. "
                              "When set to zero, grain size will not be reduced. "
