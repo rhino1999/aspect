@@ -695,6 +695,10 @@ namespace aspect
       // find out in which phase we are
       const unsigned int ol_index = get_phase_index(position, temperature, pressure);
 
+      // we keep the dislocation viscosity of the last iteration as guess
+      // for the next one
+      double current_dislocation_viscosity = 0.0;
+
       do
         {
           time += grain_growth_timestep;
@@ -716,8 +720,14 @@ namespace aspect
           const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
           const double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
 
-          const double current_viscosity = viscosity(temperature, pressure, current_composition, strain_rate, position);
-          const double current_dislocation_viscosity = dislocation_viscosity(temperature, pressure, current_composition, strain_rate, position);
+          const double current_diffusion_viscosity   = diffusion_viscosity(temperature, pressure, current_composition, strain_rate, position);
+          current_dislocation_viscosity              = dislocation_viscosity(temperature, pressure, current_composition, strain_rate, position, current_dislocation_viscosity);
+
+          double current_viscosity;
+          if(std::abs(second_strain_rate_invariant) > 1e-30)
+            current_viscosity = current_dislocation_viscosity * current_diffusion_viscosity / (current_dislocation_viscosity + current_diffusion_viscosity);
+          else
+            current_viscosity = current_diffusion_viscosity;
 
           const double dislocation_strain_rate = second_strain_rate_invariant
               * current_viscosity / current_dislocation_viscosity;
@@ -858,12 +868,18 @@ namespace aspect
                            const double      pressure,
                            const std::vector<double> &composition,
                            const SymmetricTensor<2,dim> &strain_rate,
-                           const Point<dim> &position) const
+                           const Point<dim> &position,
+                           const double viscosity_guess) const
     {
       const double diff_viscosity = diffusion_viscosity(temperature,pressure,composition,strain_rate,position) ;
 
       // Start the iteration with the full strain rate
-      double dis_viscosity = dislocation_viscosity_fixed_strain_rate(temperature,pressure,std::vector<double>(),strain_rate,position);
+      double dis_viscosity;
+      if (viscosity_guess == 0)
+        dis_viscosity = dislocation_viscosity_fixed_strain_rate(temperature,pressure,std::vector<double>(),strain_rate,position);
+      else
+        dis_viscosity = viscosity_guess;
+
       double dis_viscosity_old = 0;
       while (std::abs((dis_viscosity-dis_viscosity_old) / dis_viscosity) > dislocation_viscosity_iteration_threshold)
           {
@@ -953,11 +969,13 @@ namespace aspect
       const double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
 
       const double diff_viscosity = diffusion_viscosity(temperature, pressure, composition, strain_rate, position);
-      const double disl_viscosity = dislocation_viscosity(temperature, pressure, composition, strain_rate, position);
 
       double effective_viscosity;
-      if(std::abs(second_strain_rate_invariant) > 1e-30)//1e6*std::numeric_limits<double>::min())
-        effective_viscosity = disl_viscosity * diff_viscosity / (disl_viscosity + diff_viscosity);
+      if(std::abs(second_strain_rate_invariant) > 1e-30)
+        {
+          const double disl_viscosity = dislocation_viscosity(temperature, pressure, composition, strain_rate, position);
+          effective_viscosity = disl_viscosity * diff_viscosity / (disl_viscosity + diff_viscosity);
+        }
       else
         effective_viscosity = diff_viscosity;
       return effective_viscosity;

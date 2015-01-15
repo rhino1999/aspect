@@ -261,16 +261,20 @@ namespace aspect
         /**
          * This function calculates the dislocation viscosity. For this purpose
          * we need the dislocation component of the strain rate, which we can
-         * only compute by knowing the dislocation viscosity. Therefore we
-         * iterate for the dislocation viscosity and update the dislocation
-         * strain rate in each iteration with the new value for the dislocation
-         * viscosity.
+         * only compute by knowing the dislocation viscosity. Therefore, we
+         * iteratively solve for the dislocation viscosity and update the
+         * dislocation strain rate in each iteration using the new value
+         * obtained for the dislocation viscosity. The iteration is started
+         * with a dislocation viscosity calculated for the whole strain rate
+         * unless a guess for the viscosity is provided, which can reduce the
+         * number of iterations significantly.
          */
         virtual double dislocation_viscosity (const double      temperature,
                                               const double      pressure,
                                               const std::vector<double>    &compositional_fields,
                                               const SymmetricTensor<2,dim> &strain_rate,
-                                              const Point<dim> &position) const;
+                                              const Point<dim> &position,
+                                              const double viscosity_guess = 0) const;
 
         /**
          * This function calculates the dislocation viscosity for a given
