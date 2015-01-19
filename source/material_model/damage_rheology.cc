@@ -695,6 +695,10 @@ namespace aspect
       // find out in which phase we are
       const unsigned int ol_index = get_phase_index(position, temperature, pressure);
 
+      // we keep the dislocation viscosity of the last iteration as guess
+      // for the next one
+      double current_dislocation_viscosity = 0.0;
+
       do
         {
           time += grain_growth_timestep;
@@ -707,31 +711,40 @@ namespace aspect
 
           // grain size growth due to Ostwald ripening
           const double m = grain_growth_exponent[ol_index];
-          const double grain_size_growth = grain_growth_rate_constant[ol_index] / (m * pow(grain_size,m-1))
+          const double grain_size_growth_rate = grain_growth_rate_constant[ol_index] / (m * pow(grain_size,m-1))
                                    * exp(- (grain_growth_activation_energy[ol_index] + pressure * grain_growth_activation_volume[ol_index])
-                                       / (gas_constant * temperature))
-                                       * grain_growth_timestep;
+                                       / (gas_constant * temperature));
+          const double grain_size_growth = grain_size_growth_rate * grain_growth_timestep;
 
           // grain size reduction in dislocation creep regime
           const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
-          double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
+          const double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
+
+          const double current_diffusion_viscosity   = diffusion_viscosity(temperature, pressure, current_composition, strain_rate, position);
+          current_dislocation_viscosity              = dislocation_viscosity(temperature, pressure, current_composition, strain_rate, position, current_dislocation_viscosity);
+
+          double current_viscosity;
+          if(std::abs(second_strain_rate_invariant) > 1e-30)
+            current_viscosity = current_dislocation_viscosity * current_diffusion_viscosity / (current_dislocation_viscosity + current_diffusion_viscosity);
+          else
+            current_viscosity = current_diffusion_viscosity;
 
           const double dislocation_strain_rate = second_strain_rate_invariant
-              * viscosity(temperature, pressure, current_composition, strain_rate, position)
-              / dislocation_viscosity(temperature, pressure, current_composition, strain_rate, position);
+              * current_viscosity / current_dislocation_viscosity;
 
           double grain_size_reduction = 0.0;
 
           if (use_paleowattmeter)
             {
               // paleowattmeter: Austin and Evans (2007): Paleowattmeters: A scaling relation for dynamically recrystallized grain size. Geology 35, 343-346
-              const double stress = 2.0 * second_strain_rate_invariant * viscosity(temperature, pressure, current_composition, strain_rate, position);
-              grain_size_reduction = stress * boundary_area_change_work_fraction[ol_index] * dislocation_strain_rate * pow(grain_size,2)
-              / (geometric_constant[ol_index] * grain_boundary_energy[ol_index])
-              * grain_growth_timestep;
+              const double stress = 2.0 * second_strain_rate_invariant * current_viscosity;
+              const double grain_size_reduction_rate = 2.0 * stress * boundary_area_change_work_fraction[ol_index] * dislocation_strain_rate * pow(grain_size,2)
+              / (geometric_constant[ol_index] * grain_boundary_energy[ol_index]);
+              grain_size_reduction = grain_size_reduction_rate * grain_growth_timestep;
             }
           else
             {
+              //TODO: check equations! are we missing a factor 2 from the conversion between strain_rate and second invariant of strain_rate?
               // paleopiezometer: Hall and Parmentier (2003): Influence of grain size evolution on convective instability. Geochem. Geophys. Geosyst., 4(3).
               grain_size_reduction = reciprocal_required_strain[ol_index] * dislocation_strain_rate * grain_size * grain_growth_timestep;
             }
@@ -788,8 +801,6 @@ namespace aspect
           grain_size = 5e-6;
         }
 
-//      if(!(grain_size - grain_size == 0))
-//        std::cout << "Grain size change is not a number! It is " << grain_size << "! \n";
       return grain_size - original_grain_size - phase_grain_size_reduction;
     }
 
@@ -803,7 +814,7 @@ namespace aspect
                          const Point<dim>             &position) const
     {
       const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
-      const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
+      const double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
 
       // TODO: make this more general, for more phases we have to average grain size somehow
       // TODO: default when field is not given & warning
@@ -855,12 +866,46 @@ namespace aspect
     DamageRheology<dim>::
     dislocation_viscosity (const double      temperature,
                            const double      pressure,
-                           const std::vector<double> &,
+                           const std::vector<double> &composition,
                            const SymmetricTensor<2,dim> &strain_rate,
-                           const Point<dim> &position) const
+                           const Point<dim> &position,
+                           const double viscosity_guess) const
     {
-      const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
-      const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
+      const double diff_viscosity = diffusion_viscosity(temperature,pressure,composition,strain_rate,position) ;
+
+      // Start the iteration with the full strain rate
+      double dis_viscosity;
+      if (viscosity_guess == 0)
+        dis_viscosity = dislocation_viscosity_fixed_strain_rate(temperature,pressure,std::vector<double>(),strain_rate,position);
+      else
+        dis_viscosity = viscosity_guess;
+
+      double dis_viscosity_old = 0;
+      while (std::abs((dis_viscosity-dis_viscosity_old) / dis_viscosity) > dislocation_viscosity_iteration_threshold)
+          {
+          SymmetricTensor<2,dim> dislocation_strain_rate = diff_viscosity
+                                             / (diff_viscosity + dis_viscosity) * strain_rate;
+          dis_viscosity_old = dis_viscosity;
+          dis_viscosity = dislocation_viscosity_fixed_strain_rate(temperature,
+                                                                  pressure,
+                                                                  std::vector<double>(),
+                                                                  dislocation_strain_rate,
+                                                                  position);
+          }
+      return dis_viscosity;
+    }
+
+    template <int dim>
+    double
+    DamageRheology<dim>::
+    dislocation_viscosity_fixed_strain_rate (const double      temperature,
+                                             const double      pressure,
+                                             const std::vector<double> &,
+                                             const SymmetricTensor<2,dim> &dislocation_strain_rate,
+                                             const Point<dim> &position) const
+    {
+      const SymmetricTensor<2,dim> shear_strain_rate = dislocation_strain_rate - 1./dim * trace(dislocation_strain_rate) * unit_symmetric_tensor<dim>();
+      const double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
 
       // Currently this will never be called without adiabatic_conditions initialized, but just in case
       const double adiabatic_pressure = this->get_adiabatic_conditions().is_initialized()
@@ -926,14 +971,16 @@ namespace aspect
         Assert (grain_size >= 1.e-6, ExcMessage ("Error: The grain size should not be smaller than 1e-6 m."));*/
 
       const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
-      const double second_strain_rate_invariant = std::sqrt(-second_invariant(shear_strain_rate));
+      const double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
 
       const double diff_viscosity = diffusion_viscosity(temperature, pressure, composition, strain_rate, position);
-      const double disl_viscosity = dislocation_viscosity(temperature, pressure, composition, strain_rate, position);
 
       double effective_viscosity;
-      if(std::abs(second_strain_rate_invariant) > 1e-30)//1e6*std::numeric_limits<double>::min())
-        effective_viscosity = disl_viscosity * diff_viscosity / (disl_viscosity + diff_viscosity);
+      if(std::abs(second_strain_rate_invariant) > 1e-30)
+        {
+          const double disl_viscosity = dislocation_viscosity(temperature, pressure, composition, strain_rate, position);
+          effective_viscosity = disl_viscosity * diff_viscosity / (disl_viscosity + diff_viscosity);
+        }
       else
         effective_viscosity = diff_viscosity;
       return effective_viscosity;
@@ -1241,6 +1288,9 @@ namespace aspect
     	  std::vector<double> composition (in.composition[i]);
     	  if(advect_log_gransize)
     		convert_log_grain_size(false,composition);
+    	  else
+    	    for (unsigned int c=0;c<composition.size();++c)
+    	      composition[c] = std::max(min_grain_size,composition[c]);
 
           // set up an integer that tells us which phase transition has been crossed inside of the cell
           int crossed_transition(-1);
@@ -1416,7 +1466,7 @@ namespace aspect
                              Patterns::List (Patterns::Double(0)),
                              "This parameters $\\lambda$ gives an estimate of the strain necessary "
                              "to achieve a new grain size. ");
-          prm.declare_entry ("Recrystallized grain size", "0.001",
+          prm.declare_entry ("Recrystallized grain size", "",
                              Patterns::List (Patterns::Double(0)),
                              "The grain size $d_{ph}$ to that a phase will be reduced to when crossing a phase transition. "
                              "When set to zero, grain size will not be reduced. "
@@ -1439,6 +1489,14 @@ namespace aspect
                              Patterns::List (Patterns::Double(0)),
                              "Geometric constant $c$ used in the paleowattmeter grain size reduction law. "
                              "Units: none.");
+          prm.declare_entry ("Dislocation viscosity iteration threshold", "1e-3",
+                             Patterns::Double(0),
+                             "We need to perform an iteration inside the computation "
+                             "of the dislocation viscosity, because it depends on the "
+                             "dislocation strain rate, which depends on the dislocation "
+                             "viscosity itself. This number determines the termination "
+                             "accuracy, i.e. if the dislocation viscosity changes by less "
+                             "than this factor we terminate the iteration.");
           prm.declare_entry ("Dislocation creep exponent", "3.5",
                              Patterns::List (Patterns::Double(0)),
                              "Power-law exponent $n_{dis}$ for dislocation creep. "
@@ -1627,6 +1685,7 @@ namespace aspect
                                                   (Utilities::split_string_list(prm.get ("Geometric constant")));
 
           // rheology parameters
+          dislocation_viscosity_iteration_threshold = prm.get_double("Dislocation viscosity iteration threshold");
           dislocation_creep_exponent            = Utilities::string_to_double
                                                   (Utilities::split_string_list(prm.get ("Dislocation creep exponent")));
           dislocation_activation_energy         = Utilities::string_to_double
