@@ -881,7 +881,8 @@ namespace aspect
         dis_viscosity = viscosity_guess;
 
       double dis_viscosity_old = 0;
-      while (std::abs((dis_viscosity-dis_viscosity_old) / dis_viscosity) > dislocation_viscosity_iteration_threshold)
+      unsigned int i = 0;
+      while (std::abs((dis_viscosity-dis_viscosity_old) / dis_viscosity) > dislocation_viscosity_iteration_threshold && i < dislocation_viscosity_iteration_number)
           {
           SymmetricTensor<2,dim> dislocation_strain_rate = diff_viscosity
                                              / (diff_viscosity + dis_viscosity) * strain_rate;
@@ -891,6 +892,7 @@ namespace aspect
                                                                   std::vector<double>(),
                                                                   dislocation_strain_rate,
                                                                   position);
+          i++;
           }
       return dis_viscosity;
     }
@@ -1497,7 +1499,14 @@ namespace aspect
                              "viscosity itself. This number determines the termination "
                              "accuracy, i.e. if the dislocation viscosity changes by less "
                              "than this factor we terminate the iteration.");
-          prm.declare_entry ("Dislocation creep exponent", "3.5",
+          prm.declare_entry ("Dislocation viscosity iteration number", "10",
+                             Patterns::Integer(0),
+                             "We need to perform an iteration inside the computation "
+                             "of the dislocation viscosity, because it depends on the "
+                             "dislocation strain rate, which depends on the dislocation "
+                             "viscosity itself. This number determines the maximum "
+                             "number of iterations that are performed. ");
+           prm.declare_entry ("Dislocation creep exponent", "3.5",
                              Patterns::List (Patterns::Double(0)),
                              "Power-law exponent $n_{dis}$ for dislocation creep. "
                              "Units: none.");
@@ -1686,6 +1695,7 @@ namespace aspect
 
           // rheology parameters
           dislocation_viscosity_iteration_threshold = prm.get_double("Dislocation viscosity iteration threshold");
+          dislocation_viscosity_iteration_number = prm.get_integer("Dislocation viscosity iteration number");
           dislocation_creep_exponent            = Utilities::string_to_double
                                                   (Utilities::split_string_list(prm.get ("Dislocation creep exponent")));
           dislocation_activation_energy         = Utilities::string_to_double
