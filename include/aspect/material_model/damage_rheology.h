@@ -237,9 +237,17 @@ namespace aspect
         std::vector<double> diffusion_activation_volume;
         std::vector<double> diffusion_creep_prefactor;
         std::vector<double> diffusion_creep_grain_size_exponent;
+
+        // Because of the nonlinear nature of this material model many
+        // parameters need to be kept within bounds to ensure stability of the
+        // solution. These bounds can be adjusted as input parameters.
         double max_temperature_dependence_of_eta;
         double min_eta;
         double max_eta;
+        double min_specific_heat;
+        double max_specific_heat;
+        double min_thermal_expansivity;
+        double max_thermal_expansivity;
         double min_grain_size;
         double pv_grain_size_scaling;
 

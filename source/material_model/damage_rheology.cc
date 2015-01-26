@@ -1243,7 +1243,7 @@ namespace aspect
                 alpha += compositional_fields[i] * material_lookup[i]->thermal_expansivity(temperature,pressure);
             }
         }
-      alpha = std::max(std::min(alpha,1e-3),1e-5);
+      alpha = std::max(std::min(alpha,max_thermal_expansivity),min_thermal_expansivity);
       return alpha;
     }
 
@@ -1268,7 +1268,7 @@ namespace aspect
                  cp += compositional_fields[i] * material_lookup[i]->specific_heat(temperature,pressure);
              }
          }
-       cp = std::max(std::min(cp,6000.0),500.0);
+       cp = std::max(std::min(cp,max_specific_heat),min_specific_heat);
        return cp;
      }
 
@@ -1549,6 +1549,30 @@ namespace aspect
                              "is introduced to limit global viscosity contrasts, but still allows for a widely "
                              "varying viscosity over the whole mantle range. "
                              "Units: Pa s.");
+          prm.declare_entry ("Minimum specific heat", "500",
+                             Patterns::Double (0),
+                             "The minimum specific heat that is allowed in the whole model domain. This parameter "
+                             "is introduced to limit global viscosity contrasts, but still allows for a widely "
+                             "varying viscosity over the whole mantle range. "
+                             "Units: J/kg/K.");
+          prm.declare_entry ("Maximum specific heat", "6000",
+                             Patterns::Double (0),
+                             "The maximum specific heat that is allowed in the whole model domain. This parameter "
+                             "is introduced to limit global viscosity contrasts, but still allows for a widely "
+                             "varying viscosity over the whole mantle range. "
+                             "Units: J/kg/K.");
+          prm.declare_entry ("Minimum thermal expansivity", "1e-5",
+                             Patterns::Double (0),
+                             "The minimum thermal expansivity that is allowed in the whole model domain. This parameter "
+                             "is introduced to limit global viscosity contrasts, but still allows for a widely "
+                             "varying viscosity over the whole mantle range. "
+                             "Units: 1/K.");
+          prm.declare_entry ("Maximum thermal expansivity", "1e-3",
+                             Patterns::Double (0),
+                             "The maximum thermal expansivity that is allowed in the whole model domain. "
+                             "This parameter is introduced to limit global viscosity contrasts, but still "
+                             "allows for a widely varying viscosity over the whole mantle range. "
+                             "Units: 1/K.");
           prm.declare_entry ("Minimum grain size", "1e-5",
                              Patterns::Double (0),
                              "The minimum grain size that is used for the material model. This parameter "
@@ -1702,6 +1726,10 @@ namespace aspect
           max_temperature_dependence_of_eta     = prm.get_double ("Maximum temperature dependence of viscosity");
           min_eta                               = prm.get_double ("Minimum viscosity");
           max_eta                               = prm.get_double ("Maximum viscosity");
+          min_specific_heat                     = prm.get_double ("Minimum specific heat");
+          max_specific_heat                     = prm.get_double ("Maximum specific heat");
+          min_thermal_expansivity               = prm.get_double ("Minimum thermal expansivity");
+          max_thermal_expansivity               = prm.get_double ("Maximum thermal expansivity");
           min_grain_size                        = prm.get_double ("Minimum grain size");
           pv_grain_size_scaling                 = prm.get_double ("Lower mantle grain size scaling");
 
