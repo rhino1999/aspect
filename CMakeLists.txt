@@ -31,7 +31,7 @@ INCLUDE_DIRECTORIES(include)
 
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8.8)
 
-FIND_PACKAGE(deal.II 8.0 QUIET
+FIND_PACKAGE(deal.II 8.2 QUIET
   HINTS ${deal.II_DIR} ${DEAL_II_DIR} ../ ../../ $ENV{DEAL_II_DIR}
   )
 IF(NOT ${deal.II_FOUND})
@@ -133,6 +133,19 @@ ELSE()
       APPEND PROPERTY COMPILE_DEFINITIONS ASPECT_USE_SHARED_LIBS=1)
   ENDFOREACH()
 ENDIF()
+
+# See whether we can verify that every plugin we load is compiled against
+# the same deal.II library
+INCLUDE (CheckIncludeFiles)
+CHECK_INCLUDE_FILES ("link.h" _HAVE_LINK_H)
+IF (_HAVE_LINK_H)
+  MESSAGE(STATUS "Enabling checking of compatible deal.II library when loading plugins")
+  FOREACH(_source_file ${TARGET_SRC})
+    SET_PROPERTY(SOURCE ${_source_file}
+      APPEND PROPERTY COMPILE_DEFINITIONS ASPECT_HAVE_LINK_H=1)
+  ENDFOREACH()
+ENDIF()
+
 
 DEAL_II_INVOKE_AUTOPILOT()
 

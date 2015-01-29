@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2014 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2015 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -27,7 +27,9 @@
 
 #if ASPECT_USE_SHARED_LIBS==1
 #  include <dlfcn.h>
-#  include <link.h>
+#  ifdef ASPECT_HAVE_LINK_H
+#    include <link.h>
+#  endif
 #endif
 
 
@@ -109,6 +111,8 @@ get_dimension(const std::string &parameter_filename)
 
 
 #if ASPECT_USE_SHARED_LIBS==1
+
+#ifdef ASPECT_HAVE_LINK_H
 // collect the names of the shared libraries linked to by this program. this
 // function is a callback for the dl_iterate_phdr() function we call below
 int get_names_of_shared_libs (struct dl_phdr_info *info,
@@ -118,12 +122,14 @@ int get_names_of_shared_libs (struct dl_phdr_info *info,
   reinterpret_cast<std::set<std::string>*>(data)->insert (info->dlpi_name);
   return 0;
 }
+#endif
 
 
 // make sure the list of shared libraries we currently link with
 // has deal.II only once
 void validate_shared_lib_list (const bool before_loading_shared_libs)
 {
+#ifdef ASPECT_HAVE_LINK_H
   // get the list of all shared libs we currently link against
   std::set<std::string> shared_lib_names;
   dl_iterate_phdr(get_names_of_shared_libs, &shared_lib_names);
@@ -170,6 +176,10 @@ void validate_shared_lib_list (const bool before_loading_shared_libs)
       else
         throw aspect::QuietException();
     }
+#else
+  // simply mark the argument as read, to avoid compiler warnings
+  (void)before_loading_shared_libs;
+#endif
 }
 
 
@@ -237,8 +247,8 @@ void possibly_load_shared_libs (const std::string &parameter_filename)
           std::cerr << std::endl << std::endl
                     << "----------------------------------------------------"
                     << std::endl;
-          std::cerr << "You can not load additional shared libraries on " << std::endl
-                    << "systems where you link ASPECT as a static executable."
+          std::cerr << "You can not load plugins through additional shared libraries " << std::endl
+                    << "on systems where you link ASPECT as a static executable."
                     << std::endl
                     << "----------------------------------------------------"
                     << std::endl;

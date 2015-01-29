@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2014 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2015 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -124,7 +124,13 @@ namespace aspect
     material_model (MaterialModel::create_material_model<dim>(prm)),
     heating_model (HeatingModel::create_heating_model<dim>(prm)),
     gravity_model (GravityModel::create_gravity_model<dim>(prm)),
-    boundary_temperature (BoundaryTemperature::create_boundary_temperature<dim>(prm)),
+    // create a boundary temperature model, but only if we actually need
+    // it. otherwise, allow the user to simply specify nothing at all
+    boundary_temperature (parameters.fixed_temperature_boundary_indicators.empty()
+                          ?
+                          0
+                          :
+                          BoundaryTemperature::create_boundary_temperature<dim>(prm)),
     // create a boundary composition model, but only if we actually need
     // it. otherwise, allow the user to simply specify nothing at all
     boundary_composition (parameters.fixed_composition_boundary_indicators.empty()
@@ -147,9 +153,18 @@ namespace aspect
                     Triangulation<dim>::smoothing_on_coarsening),
                    parallel::distributed::Triangulation<dim>::mesh_reconstruction_after_repartitioning),
 
-    //Fourth order mapping doesn't really make sense for free surface calculations, since we detatch the
-    //boundary indicators anyways.
-    mapping (parameters.free_surface_enabled?1:4),
+    //Fourth order mapping doesn't really make sense for free surface
+    //calculations (we disable curved boundaries) or we we only have straight
+    //boundaries. So we either pick MappingQ(4,true) or MappingQ(1,false)
+    mapping (
+      (parameters.free_surface_enabled
+       ||
+       geometry_model->has_curved_elements() == false
+      )?1:4,
+      (parameters.free_surface_enabled
+       ||
+       geometry_model->has_curved_elements() == false
+      )?false:true),
 
     // define the finite element. obviously, what we do here needs
     // to match the data we provide in the Introspection class
@@ -175,14 +190,14 @@ namespace aspect
   {
     if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
       {
-	// only open the logfile on processor 0, the other processors won't be
-	// writing into the stream anyway
-	log_file_stream.open((parameters.output_directory + "log.txt").c_str(),
-			     parameters.resume_computation ? std::ios_base::app : std::ios_base::out);
+        // only open the logfile on processor 0, the other processors won't be
+        // writing into the stream anyway
+        log_file_stream.open((parameters.output_directory + "log.txt").c_str(),
+                             parameters.resume_computation ? std::ios_base::app : std::ios_base::out);
 
-	// we already printed the header to the screen, so here we just dump it
-	// into the logfile.
-	print_aspect_header(log_file_stream);
+        // we already printed the header to the screen, so here we just dump it
+        // into the logfile.
+        print_aspect_header(log_file_stream);
       }
 
     computing_timer.enter_section("Initialization");
@@ -285,15 +300,18 @@ namespace aspect
     gravity_model->parse_parameters (prm);
     gravity_model->initialize ();
 
-    if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(boundary_temperature.get()))
-      sim->initialize (*this);
-    boundary_temperature->parse_parameters (prm);
-    boundary_temperature->initialize ();
+    if (boundary_temperature.get())
+      {
+        if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(boundary_temperature.get()))
+          sim->initialize (*this);
+        boundary_temperature->parse_parameters (prm);
+        boundary_temperature->initialize ();
+      }
 
-    if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(boundary_composition.get()))
-      sim->initialize (*this);
     if (boundary_composition.get())
       {
+        if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(boundary_composition.get()))
+          sim->initialize (*this);
         boundary_composition->parse_parameters (prm);
         boundary_composition->initialize ();
       }
@@ -666,8 +684,10 @@ namespace aspect
     // do the same for the temperature variable: evaluate the current boundary temperature
     // and add these constraints as well
     {
-      //Update the temperature boundary conditon.
-      boundary_temperature->update();
+      // If there is a fixed boundary temperature,
+      // update the temperature boundary condition.
+      if (boundary_temperature.get())
+        boundary_temperature->update();
 
       // obtain the boundary indicators that belong to Dirichlet-type
       // temperature boundary conditions and interpolate the temperature
@@ -690,8 +710,15 @@ namespace aspect
                                                     current_constraints,
                                                     introspection.component_masks.temperature);
         }
+    }
 
-      // now do the same for the composition variable:
+    // now do the same for the composition variable:
+    {
+      // If there are fixed boundary compositions,
+      // update the composition boundary condition.
+      if (boundary_composition.get())
+        boundary_composition->update();
+
       // obtain the boundary indicators that belong to Dirichlet-type
       // composition boundary conditions and interpolate the composition
       // there
@@ -762,6 +789,8 @@ namespace aspect
 
 #else
     TrilinosWrappers::BlockSparsityPattern sp (system_partitioning,
+                                               system_partitioning,
+                                               introspection.index_sets.system_relevant_partitioning,
                                                mpi_communicator);
 #endif
 
@@ -813,8 +842,12 @@ namespace aspect
     LinearAlgebra::CompressedBlockSparsityPattern sp(introspection.index_sets.system_relevant_partitioning);
 
 #else
+
     TrilinosWrappers::BlockSparsityPattern sp (system_partitioning,
+                                               system_partitioning,
+                                               introspection.index_sets.system_relevant_partitioning,
                                                mpi_communicator);
+
 #endif
     DoFTools::make_sparsity_pattern (dof_handler,
                                      coupling, sp,
@@ -921,13 +954,11 @@ namespace aspect
                   == parameters.prescribed_velocity_boundary_indicators.end(),
                   ExcMessage ("Error: The boundary conditions can not be prescribed on periodic boundaries."));
 
-#if (DEAL_II_MAJOR*100 + DEAL_II_MINOR) >= 801
           DoFTools::make_periodicity_constraints(dof_handler,
                                                  (*p).first.first,  //first boundary id
                                                  (*p).first.second, //second boundary id
                                                  (*p).second,       //cartesian direction for translational symmetry
                                                  constraints);
-#endif
         }
 
 
