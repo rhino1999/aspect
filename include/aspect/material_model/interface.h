@@ -589,7 +589,7 @@ namespace aspect
            * scale of reactions is normally much shorter than that of
            * convection), so the quantity returned by this function is an
            * actual change in the amount of material, which is added to or
-           * substracted from the current value of the compositional field,
+           * subtracted from the current value of the compositional field,
            * and NOT a reaction rate. The idea is, that in dependence of
            * temperature, pressure, position and the compositional fields
            * themselves an equilibrium can be calculated, and the difference
@@ -598,7 +598,7 @@ namespace aspect
            *
            * For mass conservation it should ALWAYS be checked that what is
            * subtracted from one field is added to another field (and the
-           * other way round) and that one never substracts more than the
+           * other way round) and that one never subtracts more than the
            * actual value of a field (so it does not get negative).
            *
            * This function has a default implementation that sets the reaction
@@ -771,7 +771,7 @@ namespace aspect
          * compositional fields (because the time scale of reactions is
          * normally much shorter than that of convection), so the quantity
          * returned by this function is an actual change in the amount of
-         * material, which is added to or substracted from the current value
+         * material, which is added to or subtracted from the current value
          * of the compositional field, and NOT a reaction rate. The idea is,
          * that in dependence of temperature, pressure, position and the
          * compositional fields themselves an equilibrium can be calculated,
@@ -780,7 +780,7 @@ namespace aspect
          *
          * For mass conservation it should ALWAYS be checked that what is
          * subtracted from one field is added to another field (and the other
-         * way round) and that one never substracts more than the actual value
+         * way round) and that one never subtracts more than the actual value
          * of a field (so it does not get negative).
          *
          * This function has a default implementation that sets the reaction
