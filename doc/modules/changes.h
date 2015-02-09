@@ -6,6 +6,32 @@
  *
  *
  * <ol>
+ * <li> New: A new plugin called 'ascii data' is available for boundary and
+ * initial conditions that reads in text data from files provided by the user.
+ * The plugin works for box and shell geometries and allows for time-dependent
+ * or constant boundary conditions. The data files must provide data for the
+ * whole model domain and the plugin interpolates the data from a structured
+ * grid to Aspect's mesh linearly.
+ * <br>
+ * (Eva Bredow, Rene Gassmoeller, 2015/02/03)
+ *
+ *
+ * <li> New: There is now a mass flux statistics postprocessor that
+ * calculates the mass flux through every boundary interface. This 
+ * is helpful for regional models with prescribed boundary velocities. 
+ * In general one would want to set up models with as much in- as out-
+ * flux, but in some cases it is hard to know, if the boundary
+ * plugins actually ensure this. With this plugins the net flux can
+ * be monitored.
+ * <br>
+ * (Rene Gassmoeller, 2015/02/02)
+ *
+ * <li> Fixed: There was a small bug in ASPECT 1.2 that only occured in
+ * the adiabatic initial temperature plugin, when no temperature
+ * was prescribed at any boundary, the model was compressible and a
+ * bottom thermal boundary layer was included. This is fixed now.
+ * <br>
+ * (Rene Gassmoeller, 2015/02/02)
  *
  * <li> Fixed: The Steinberger material model had a bug in case a
  * material table was used that had not the same number of points in

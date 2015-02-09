@@ -816,6 +816,8 @@ namespace aspect
                                              scratch.finite_element_values,
                                              true,
                                              scratch.material_model_inputs);
+        scratch.material_model_inputs.cell = cell;
+
         material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
 
         for (unsigned int q=0; q<n_q_points; ++q)
@@ -829,6 +831,8 @@ namespace aspect
               scratch.explicit_material_model_inputs.composition[q][c] = (scratch.old_composition_values[c][q] + scratch.old_old_composition_values[c][q]) / 2;
             scratch.explicit_material_model_inputs.strain_rate[q] = (scratch.old_strain_rates[q] + scratch.old_old_strain_rates[q]) / 2;
           }
+        scratch.explicit_material_model_inputs.cell = cell;
+
         material_model->evaluate(scratch.explicit_material_model_inputs,scratch.explicit_material_model_outputs);
 
         viscosity_per_cell[cellidx] = compute_viscosity(scratch,
@@ -848,7 +852,7 @@ namespace aspect
   template <int dim>
   void
   Simulator<dim>::
-  compute_material_model_input_values (const LinearAlgebra::BlockVector                    &input_solution,
+  compute_material_model_input_values (const LinearAlgebra::BlockVector                            &input_solution,
                                        const FEValues<dim>                                         &input_finite_element_values,
                                        const bool                                                   compute_strainrate,
                                        typename MaterialModel::Interface<dim>::MaterialModelInputs &material_model_inputs) const
@@ -909,6 +913,7 @@ namespace aspect
                                          scratch.finite_element_values,
                                          true,
                                          scratch.material_model_inputs);
+    scratch.material_model_inputs.cell = cell;
 
     material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
 
@@ -1096,6 +1101,7 @@ namespace aspect
                                          scratch.finite_element_values,
                                          rebuild_stokes_matrix,
                                          scratch.material_model_inputs);
+    scratch.material_model_inputs.cell = cell;
 
     material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
 
@@ -1510,6 +1516,8 @@ namespace aspect
                                              scratch.finite_element_values,
                                              true,
                                              scratch.material_model_inputs);
+        scratch.material_model_inputs.cell = cell;
+
         material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
 
         for (unsigned int q=0; q<n_q_points; ++q)
@@ -1521,6 +1529,8 @@ namespace aspect
               scratch.explicit_material_model_inputs.composition[q][c] = (scratch.old_composition_values[c][q] + scratch.old_old_composition_values[c][q]) / 2;
             scratch.explicit_material_model_inputs.strain_rate[q] = (scratch.old_strain_rates[q] + scratch.old_old_strain_rates[q]) / 2;
           }
+        scratch.explicit_material_model_inputs.cell = cell;
+
         material_model->evaluate(scratch.explicit_material_model_inputs,scratch.explicit_material_model_outputs);
       }
     else
@@ -1529,6 +1539,8 @@ namespace aspect
                                              scratch.finite_element_values,
                                              true,
                                              scratch.material_model_inputs);
+        scratch.material_model_inputs.cell = cell;
+
         material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
       }
 
