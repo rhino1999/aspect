@@ -816,7 +816,6 @@ namespace aspect
                                              scratch.finite_element_values,
                                              true,
                                              scratch.material_model_inputs);
-        scratch.material_model_inputs.cell = cell;
 
         material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
 
@@ -892,6 +891,8 @@ namespace aspect
     for (unsigned int q=0; q<n_q_points; ++q)
       for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
         material_model_inputs.composition[q][c] = composition_values[c][q];
+
+    material_model_inputs.cell = input_finite_element_values.get_cell();
   }
 
 
@@ -913,7 +914,6 @@ namespace aspect
                                          scratch.finite_element_values,
                                          true,
                                          scratch.material_model_inputs);
-    scratch.material_model_inputs.cell = cell;
 
     material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
 
@@ -1101,7 +1101,6 @@ namespace aspect
                                          scratch.finite_element_values,
                                          rebuild_stokes_matrix,
                                          scratch.material_model_inputs);
-    scratch.material_model_inputs.cell = cell;
 
     material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
 
@@ -1516,7 +1515,6 @@ namespace aspect
                                              scratch.finite_element_values,
                                              true,
                                              scratch.material_model_inputs);
-        scratch.material_model_inputs.cell = cell;
 
         material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
 
@@ -1539,7 +1537,6 @@ namespace aspect
                                              scratch.finite_element_values,
                                              true,
                                              scratch.material_model_inputs);
-        scratch.material_model_inputs.cell = cell;
 
         material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
       }

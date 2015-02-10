@@ -89,6 +89,7 @@ namespace aspect
               }
 
             in.position = fe_values.get_quadrature_points();
+            in.cell = cell;
 
             this->get_material_model().evaluate(in, out);
 
