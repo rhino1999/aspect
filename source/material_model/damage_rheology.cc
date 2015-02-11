@@ -23,6 +23,8 @@
 #include <deal.II/base/parameter_handler.h>
 
 #include <iostream>
+#include <deal.II/base/quadrature_lib.h>
+#include <deal.II/fe/fe_values.h>
 
 using namespace dealii;
 
@@ -1277,6 +1279,88 @@ namespace aspect
     DamageRheology<dim>::
     evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const
     {
+      double dHdT = 0.0;
+      double dHdp = 0.0;
+
+      if (in.cell != this->get_dof_handler().end())
+        {
+          const QTrapez<dim> quadrature_formula;
+          const unsigned int n_q_points = quadrature_formula.size();
+
+          FEValues<dim> fe_values (this->get_mapping(),
+                                   this->get_fe(),
+                                   quadrature_formula,
+                                   update_values);
+
+          std::vector<double> temperatures(n_q_points), pressures(n_q_points);
+          std::vector<std::vector<double> > compositions (quadrature_formula.size(),std::vector<double> (this->n_compositional_fields()));
+          std::vector<std::vector<double> > composition_values (this->n_compositional_fields(),std::vector<double> (quadrature_formula.size()));
+
+          fe_values.reinit (in.cell);
+
+          // get the various components of the solution, then
+          // evaluate the material properties there
+          fe_values[this->introspection().extractors.temperature]
+                    .get_function_values (this->get_solution(), temperatures);
+          fe_values[this->introspection().extractors.pressure]
+                    .get_function_values (this->get_solution(), pressures);
+
+          for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
+            fe_values[this->introspection().extractors.compositional_fields[c]]
+                      .get_function_values(this->get_solution(),
+                          composition_values[c]);
+          for (unsigned int q=0; q<fe_values.n_quadrature_points; ++q)
+            {
+              for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
+                compositions[q][c] = composition_values[c][q];
+            }
+
+
+          std::vector<double> enthalpies(n_q_points,0.0);
+
+          for (unsigned int q=0; q<n_q_points; ++q)
+            {
+              if (n_material_data == 1)
+                enthalpies[q] = material_lookup[0]->enthalpy(temperatures[q],pressures[q]);
+              else
+                {
+                  for (unsigned i = 0; i < n_material_data; i++)
+                    enthalpies[q] = material_lookup[i]->enthalpy(temperatures[q],pressures[q]);
+                }
+            }
+
+          unsigned int T_points(0),p_points(0);
+
+          for (unsigned int q=0; q<n_q_points; ++q)
+            {
+              const double own_enthalpy = material_lookup[0]->enthalpy(temperatures[q],pressures[q]);
+              for (unsigned int p=0; p<n_q_points; ++p)
+                {
+                  double enthalpy_p,enthalpy_T;
+                  if (std::fabs(temperatures[q] - temperatures[p]) > temperatures[q] * std::numeric_limits<double>::epsilon())
+                    {
+                      enthalpy_p = material_lookup[0]->enthalpy(temperatures[p],pressures[q]);
+                      const double point_contribution = (own_enthalpy-enthalpy_p)/(temperatures[q]-temperatures[p]);
+                      //Assert (point_contribution >= 0, ExcMessage ("The product of density and c_P needs to be a non-negative quantity."));
+                      dHdT += point_contribution;
+                      T_points++;
+                    }
+                  if (std::fabs(pressures[q] - pressures[p]) > temperatures[q] * std::numeric_limits<double>::epsilon())
+                    {
+                      enthalpy_T = material_lookup[0]->enthalpy(temperatures[q],pressures[p]);
+                      dHdp += (own_enthalpy-enthalpy_T)/(pressures[q]-pressures[p]);
+                      p_points++;
+                    }
+                }
+              if ((T_points > 0)
+                  && (p_points > 0))
+                {
+                  dHdT /= T_points;
+                  dHdp /= p_points;
+                }
+            }
+        }
+
       for (unsigned int i=0; i<in.position.size(); ++i)
         {
     	  // convert the grain size from log to normal
@@ -1330,8 +1414,20 @@ namespace aspect
                                                                        in.position[i])),max_eta);
 
           out.densities[i] = density(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
-          out.thermal_expansion_coefficients[i] = thermal_expansion_coefficient(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
-          out.specific_heat[i] = specific_heat(in.temperature[i], in.pressure[i], composition, in.position[i]);
+
+          if ((in.cell != this->get_dof_handler().end())
+              && (std::fabs(dHdp) > std::numeric_limits<double>::epsilon())
+              && (std::fabs(dHdT) > std::numeric_limits<double>::epsilon()))
+            {
+              out.thermal_expansion_coefficients[i] = (1 - out.densities[i] * dHdp) / in.temperature[i];
+              out.specific_heat[i] = dHdT;
+            }
+          else
+            {
+              out.thermal_expansion_coefficients[i] = thermal_expansion_coefficient(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
+              out.specific_heat[i] = specific_heat(in.temperature[i], in.pressure[i], composition, in.position[i]);
+            }
+
           out.thermal_conductivities[i] = k_value;
           out.compressibilities[i] = compressibility(in.temperature[i], in.pressure[i], composition, in.position[i]);
 
