@@ -1197,6 +1197,7 @@ namespace aspect
     DamageRheology<dim>::
     is_compressible () const
     {
+//      return false;
       return (reference_compressibility != 0)
           || use_table_properties;
     }
@@ -1315,20 +1316,6 @@ namespace aspect
                 compositions[q][c] = composition_values[c][q];
             }
 
-
-          std::vector<double> enthalpies(n_q_points,0.0);
-
-          for (unsigned int q=0; q<n_q_points; ++q)
-            {
-              if (n_material_data == 1)
-                enthalpies[q] = material_lookup[0]->enthalpy(temperatures[q],pressures[q]);
-              else
-                {
-                  for (unsigned i = 0; i < n_material_data; i++)
-                    enthalpies[q] = material_lookup[i]->enthalpy(temperatures[q],pressures[q]);
-                }
-            }
-
           unsigned int T_points(0),p_points(0);
 
           for (unsigned int q=0; q<n_q_points; ++q)
@@ -1341,7 +1328,6 @@ namespace aspect
                     {
                       enthalpy_p = material_lookup[0]->enthalpy(temperatures[p],pressures[q]);
                       const double point_contribution = (own_enthalpy-enthalpy_p)/(temperatures[q]-temperatures[p]);
-                      //Assert (point_contribution >= 0, ExcMessage ("The product of density and c_P needs to be a non-negative quantity."));
                       dHdT += point_contribution;
                       T_points++;
                     }
@@ -1352,12 +1338,13 @@ namespace aspect
                       p_points++;
                     }
                 }
-              if ((T_points > 0)
-                  && (p_points > 0))
-                {
-                  dHdT /= T_points;
-                  dHdp /= p_points;
-                }
+            }
+
+          if ((T_points > 0)
+              && (p_points > 0))
+            {
+              dHdT /= T_points;
+              dHdp /= p_points;
             }
         }
 
@@ -1415,17 +1402,25 @@ namespace aspect
 
           out.densities[i] = density(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
 
-          if ((in.cell != this->get_dof_handler().end())
-              && (std::fabs(dHdp) > std::numeric_limits<double>::epsilon())
-              && (std::fabs(dHdT) > std::numeric_limits<double>::epsilon()))
+          if (this->get_adiabatic_conditions().is_initialized())
             {
-              out.thermal_expansion_coefficients[i] = (1 - out.densities[i] * dHdp) / in.temperature[i];
-              out.specific_heat[i] = dHdT;
+              if ((in.cell != this->get_dof_handler().end())
+                  && (std::fabs(dHdp) > std::numeric_limits<double>::epsilon())
+                  && (std::fabs(dHdT) > std::numeric_limits<double>::epsilon()))
+                {
+                  out.thermal_expansion_coefficients[i] = (1 - out.densities[i] * dHdp) / in.temperature[i];
+                  out.specific_heat[i] = dHdT;
+                }
+              else
+                {
+                  out.thermal_expansion_coefficients[i] = thermal_expansion_coefficient(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
+                  out.specific_heat[i] = specific_heat(in.temperature[i], in.pressure[i], composition, in.position[i]);
+                }
             }
           else
             {
-              out.thermal_expansion_coefficients[i] = thermal_expansion_coefficient(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
-              out.specific_heat[i] = specific_heat(in.temperature[i], in.pressure[i], composition, in.position[i]);
+              out.thermal_expansion_coefficients[i] = (1 - out.densities[i] * material_lookup[0]->dHdp(in.temperature[i],in.pressure[i])) / in.temperature[i];
+              out.specific_heat[i] = material_lookup[0]->dHdT(in.temperature[i],in.pressure[i]);
             }
 
           out.thermal_conductivities[i] = k_value;
