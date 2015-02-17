@@ -1331,7 +1331,7 @@ namespace aspect
                       dHdT += point_contribution;
                       T_points++;
                     }
-                  if (std::fabs(pressures[q] - pressures[p]) > temperatures[q] * std::numeric_limits<double>::epsilon())
+                  if (std::fabs(pressures[q] - pressures[p]) > pressures[q] * std::numeric_limits<double>::epsilon())
                     {
                       enthalpy_T = material_lookup[0]->enthalpy(temperatures[q],pressures[p]);
                       dHdp += (own_enthalpy-enthalpy_T)/(pressures[q]-pressures[p]);
