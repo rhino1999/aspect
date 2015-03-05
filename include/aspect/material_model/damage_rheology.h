@@ -228,6 +228,7 @@ namespace aspect
 
         // rheology parameters
         double dislocation_viscosity_iteration_threshold;
+        unsigned int dislocation_viscosity_iteration_number;
         std::vector<double> dislocation_creep_exponent;
         std::vector<double> dislocation_activation_energy;
         std::vector<double> dislocation_activation_volume;
