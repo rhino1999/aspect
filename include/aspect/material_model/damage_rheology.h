@@ -191,7 +191,7 @@ namespace aspect
                                    const std::vector<double> &compositional_fields,
                                    const Point<dim> &position) const;
 
-      private:
+      protected:
         double reference_rho;
         double reference_T;
         double eta;

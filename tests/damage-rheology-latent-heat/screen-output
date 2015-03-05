@@ -1,0 +1,53 @@
+
+Loading shared library <./libdamage-rheology-latent-heat.so>
+
+Number of active cells: 320 (on 3 levels)
+Number of degrees of freedom: 4,752 (2,898+405+1,449)
+
+*** Timestep 0:  t=0 seconds
+   Solving temperature system... 0 iterations.
+   Rebuilding Stokes preconditioner...
+   Solving Stokes system... 27 iterations.
+
+   Postprocessing:
+     Temperature min/avg/max: 999 K, 999.5 K, 1000 K
+
+*** Timestep 1:  t=2.91597e+14 seconds
+   Solving temperature system... 35 iterations.
+   Rebuilding Stokes preconditioner...
+   Solving Stokes system... 23 iterations.
+
+   Postprocessing:
+     Temperature min/avg/max: 999 K, 1000 K, 1005 K
+
+*** Timestep 2:  t=5.73829e+14 seconds
+   Solving temperature system... 25 iterations.
+   Rebuilding Stokes preconditioner...
+   Solving Stokes system... 22 iterations.
+
+   Postprocessing:
+     Temperature min/avg/max: 999 K, 1001 K, 1010 K
+
+*** Timestep 3:  t=8.55686e+14 seconds
+   Solving temperature system... 25 iterations.
+   Rebuilding Stokes preconditioner...
+   Solving Stokes system... 18 iterations.
+
+   Postprocessing:
+     Temperature min/avg/max: 999 K, 1001 K, 1014 K
+
+*** Timestep 4:  t=1e+15 seconds
+   Solving temperature system... 18 iterations.
+   Rebuilding Stokes preconditioner...
+   Solving Stokes system... 15 iterations.
+
+   Postprocessing:
+     Temperature min/avg/max: 999 K, 1002 K, 1017 K
+
+Termination requested by criterion: end time
+
+
++---------------------------------------------+------------+------------+
++---------------------------------+-----------+------------+------------+
++---------------------------------+-----------+------------+------------+
+
