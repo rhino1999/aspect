@@ -784,14 +784,14 @@ namespace aspect
           = DoFTools::always;
     }
 
+    LinearAlgebra::BlockCompressedSparsityPattern sp;
 #ifdef ASPECT_USE_PETSC
-    LinearAlgebra::CompressedBlockSparsityPattern sp(introspection.index_sets.system_relevant_partitioning);
-
+    sp.reinit (introspection.index_sets.system_relevant_partitioning);
 #else
-    TrilinosWrappers::BlockSparsityPattern sp (system_partitioning,
-                                               system_partitioning,
-                                               introspection.index_sets.system_relevant_partitioning,
-                                               mpi_communicator);
+    sp.reinit (system_partitioning,
+               system_partitioning,
+               introspection.index_sets.system_relevant_partitioning,
+               mpi_communicator);
 #endif
 
     DoFTools::make_sparsity_pattern (dof_handler,
@@ -837,18 +837,16 @@ namespace aspect
         else
           coupling[c][d] = DoFTools::none;
 
-
+    LinearAlgebra::BlockCompressedSparsityPattern sp;
 #ifdef ASPECT_USE_PETSC
-    LinearAlgebra::CompressedBlockSparsityPattern sp(introspection.index_sets.system_relevant_partitioning);
-
+    sp.reinit (introspection.index_sets.system_relevant_partitioning);
 #else
-
-    TrilinosWrappers::BlockSparsityPattern sp (system_partitioning,
-                                               system_partitioning,
-                                               introspection.index_sets.system_relevant_partitioning,
-                                               mpi_communicator);
-
+    sp.reinit (system_partitioning,
+               system_partitioning,
+               introspection.index_sets.system_relevant_partitioning,
+               mpi_communicator);
 #endif
+
     DoFTools::make_sparsity_pattern (dof_handler,
                                      coupling, sp,
                                      constraints, false,
@@ -1431,11 +1429,8 @@ namespace aspect
             }
 
           for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
-            {
-              current_linearization_point.block(introspection.block_indices.compositional_fields[c])
-                = solution.block(introspection.block_indices.compositional_fields[c]);
-            }
-
+            current_linearization_point.block(introspection.block_indices.compositional_fields[c])
+              = solution.block(introspection.block_indices.compositional_fields[c]);
 
           // the Stokes matrix depends on the viscosity. if the viscosity
           // depends on other solution variables, then after we need to
@@ -1532,11 +1527,11 @@ namespace aspect
                     = solve_advection(AdvectionField::composition(c));
                 }
 
+              // for consistency we update the current linearization point only after we have solved
+              // all fields, so that we use the same point in time for every field when solving
               for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
-                {
-                  current_linearization_point.block(introspection.block_indices.compositional_fields[c])
-                    = solution.block(introspection.block_indices.compositional_fields[c]);
-                }
+                current_linearization_point.block(introspection.block_indices.compositional_fields[c])
+                  = solution.block(introspection.block_indices.compositional_fields[c]);
 
               // the Stokes matrix depends on the viscosity. if the viscosity
               // depends on other solution variables, then after we need to
@@ -1571,11 +1566,11 @@ namespace aspect
 
               double max = 0.0;
               for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
-                if(initial_composition_residual[c]>0)
+                if (initial_composition_residual[c]>0)
                   max = std::max(composition_residual[c]/initial_composition_residual[c],max);
-              if(initial_stokes_residual>0)
+              if (initial_stokes_residual>0)
                 max = std::max(stokes_residual/initial_stokes_residual, max);
-              if(initial_temperature_residual>0)
+              if (initial_temperature_residual>0)
                 max = std::max(temperature_residual/initial_temperature_residual, max);
               pcout << "      residual: " << max << std::endl;
               if (max < parameters.nonlinear_tolerance)
@@ -1608,11 +1603,8 @@ namespace aspect
             }
 
           for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
-            {
-              current_linearization_point.block(introspection.block_indices.compositional_fields[c])
-                = solution.block(introspection.block_indices.compositional_fields[c]);
-            }
-
+            current_linearization_point.block(introspection.block_indices.compositional_fields[c])
+              = solution.block(introspection.block_indices.compositional_fields[c]);
 
           // residual vector (only for the velocity)
           LinearAlgebra::Vector residual (introspection.index_sets.system_partitioning[0], mpi_communicator);
