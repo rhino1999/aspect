@@ -1514,6 +1514,8 @@ namespace aspect
                                          scratch.finite_element_values,
                                          true,
                                          scratch.material_model_inputs);
+    scratch.material_model_inputs.cell = cell;
+
     material_model->evaluate(scratch.material_model_inputs,scratch.material_model_outputs);
 
     if (advection_field.is_temperature())
