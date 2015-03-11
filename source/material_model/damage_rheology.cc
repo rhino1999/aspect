@@ -143,7 +143,11 @@ namespace aspect
               }
           }
 
-
+          std_cxx1x::array<double,2>
+          get_pT_steps() const
+          {
+            return std_cxx1x::array<double,2> {delta_press,delta_temp};
+          }
 
         protected:
 
@@ -994,6 +998,35 @@ namespace aspect
     template <int dim>
     double
     DamageRheology<dim>::
+    enthalpy (const double      temperature,
+              const double      pressure,
+              const std::vector<double> &compositional_fields,
+              const Point<dim> &position) const
+    {
+      //this function is not called from evaluate() so we need to care about
+      //corrections for temperature and pressure
+      //const double corrected_temperature = get_corrected_temperature(temperature,pressure,position);
+      //const double corrected_pressure = get_corrected_pressure(temperature,pressure,position);
+      const double corrected_temperature = temperature;
+      const double corrected_pressure = pressure;
+      AssertThrow ((reference_compressibility != 0.0) || use_table_properties,
+          ExcMessage("Currently only compressible models are supported for seismic output."));
+
+      double enthalpy = 0.0;
+      if (n_material_data == 1)
+        enthalpy += material_lookup[0]->enthalpy(corrected_temperature,corrected_pressure);
+      else
+        {
+          for (unsigned i = 0; i < n_material_data; i++)
+            enthalpy += compositional_fields[i] * material_lookup[i]->enthalpy(corrected_temperature,corrected_pressure);
+        }
+      return enthalpy;
+    }
+
+
+    template <int dim>
+    double
+    DamageRheology<dim>::
     seismic_Vp (const double      temperature,
                 const double      pressure,
                 const std::vector<double> &compositional_fields,
@@ -1283,18 +1316,18 @@ namespace aspect
      }
 
     template <int dim>
-    void
+    std_cxx1x::array<std::pair<double, unsigned int>,2>
     DamageRheology<dim>::
-    evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const
-    {
-      double dHdT = 0.0;
-      double dHdp = 0.0;
+    enthalpy_derivative (const typename Interface<dim>::MaterialModelInputs &in) const
+     {
+      std_cxx1x::array<std::pair<double, unsigned int>,2> derivative;
+      unsigned int T_points(0), p_points(0);
+      double dHdT(0.0), dHdp(0.0);
 
       if (in.cell != this->get_dof_handler().end())
         {
           const QTrapez<dim> quadrature_formula;
           const unsigned int n_q_points = quadrature_formula.size();
-
           FEValues<dim> fe_values (this->get_mapping(),
                                    this->get_fe(),
                                    quadrature_formula,
@@ -1309,13 +1342,13 @@ namespace aspect
           // get the various components of the solution, then
           // evaluate the material properties there
           fe_values[this->introspection().extractors.temperature]
-                    .get_function_values (this->get_solution(), temperatures);
+                    .get_function_values (this->get_current_linearization_point(), temperatures);
           fe_values[this->introspection().extractors.pressure]
-                    .get_function_values (this->get_solution(), pressures);
+                    .get_function_values (this->get_current_linearization_point(), pressures);
 
           for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
             fe_values[this->introspection().extractors.compositional_fields[c]]
-                      .get_function_values(this->get_solution(),
+                      .get_function_values(this->get_current_linearization_point(),
                           composition_values[c]);
           for (unsigned int q=0; q<fe_values.n_quadrature_points; ++q)
             {
@@ -1323,26 +1356,41 @@ namespace aspect
                 compositions[q][c] = composition_values[c][q];
             }
 
-          unsigned int T_points(0),p_points(0);
+          AssertThrow (material_lookup.size() == 1,
+                       ExcMessage("This formalism is only implemented for one material "
+                           "table."));
+
+          const unsigned int max_substeps = 1;
 
           for (unsigned int q=0; q<n_q_points; ++q)
             {
-              const double own_enthalpy = material_lookup[0]->enthalpy(temperatures[q],pressures[q]);
               for (unsigned int p=0; p<n_q_points; ++p)
                 {
-                  double enthalpy_p,enthalpy_T;
-                  if (std::fabs(temperatures[q] - temperatures[p]) > temperatures[q] * std::numeric_limits<double>::epsilon())
+                  if (std::fabs(temperatures[q] - temperatures[p]) > material_lookup[0]->get_pT_steps()[1] / 4.0)
                     {
-                      enthalpy_p = material_lookup[0]->enthalpy(temperatures[p],pressures[q]);
-                      const double point_contribution = (own_enthalpy-enthalpy_p)/(temperatures[q]-temperatures[p]);
-                      dHdT += point_contribution;
-                      T_points++;
+                      for (unsigned int substep = 0; substep < max_substeps; ++substep)
+                        {
+                          const double current_pressure = pressures[q]
+                                                                    + (substep/(max_substeps-1))
+                                                                    * (pressures[p]-pressures[q]);
+                          const double own_enthalpy = material_lookup[0]->enthalpy(temperatures[q],current_pressure);
+                          const double enthalpy_p = material_lookup[0]->enthalpy(temperatures[p],current_pressure);
+                          dHdT += (own_enthalpy-enthalpy_p)/(temperatures[q]-temperatures[p]);
+                          T_points++;
+                        }
                     }
-                  if (std::fabs(pressures[q] - pressures[p]) > pressures[q] * std::numeric_limits<double>::epsilon())
+                  if (std::fabs(pressures[q] - pressures[p]) > material_lookup[0]->get_pT_steps()[0] / 4.0)
                     {
-                      enthalpy_T = material_lookup[0]->enthalpy(temperatures[q],pressures[p]);
-                      dHdp += (own_enthalpy-enthalpy_T)/(pressures[q]-pressures[p]);
-                      p_points++;
+                      for (unsigned int substep = 0; substep < max_substeps; ++substep)
+                        {
+                          const double current_temperature = temperatures[q]
+                                                                    + (substep/(max_substeps-1))
+                                                                    * (temperatures[p]-temperatures[q]);
+                          const double own_enthalpy = material_lookup[0]->enthalpy(current_temperature,pressures[q]);
+                          const double enthalpy_T = material_lookup[0]->enthalpy(current_temperature,pressures[p]);
+                          dHdp += (own_enthalpy-enthalpy_T)/(pressures[q]-pressures[p]);
+                          p_points++;
+                       }
                     }
                 }
             }
@@ -1355,6 +1403,16 @@ namespace aspect
             }
         }
 
+      derivative[0] = std::make_pair(dHdT,T_points);
+      derivative[1] = std::make_pair(dHdp,p_points);
+      return derivative;
+     }
+
+    template <int dim>
+    void
+    DamageRheology<dim>::
+    evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const
+    {
       for (unsigned int i=0; i<in.position.size(); ++i)
         {
     	  // convert the grain size from log to normal
@@ -1408,28 +1466,6 @@ namespace aspect
                                                                        in.position[i])),max_eta);
 
           out.densities[i] = density(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
-
-          if (this->get_adiabatic_conditions().is_initialized())
-            {
-              if ((in.cell != this->get_dof_handler().end())
-                  && (std::fabs(dHdp) > std::numeric_limits<double>::epsilon())
-                  && (std::fabs(dHdT) > std::numeric_limits<double>::epsilon()))
-                {
-                  out.thermal_expansion_coefficients[i] = (1 - out.densities[i] * dHdp) / in.temperature[i];
-                  out.specific_heat[i] = dHdT;
-                }
-              else
-                {
-                  out.thermal_expansion_coefficients[i] = thermal_expansion_coefficient(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
-                  out.specific_heat[i] = specific_heat(in.temperature[i], in.pressure[i], composition, in.position[i]);
-                }
-            }
-          else
-            {
-              out.thermal_expansion_coefficients[i] = (1 - out.densities[i] * material_lookup[0]->dHdp(in.temperature[i],in.pressure[i])) / in.temperature[i];
-              out.specific_heat[i] = material_lookup[0]->dHdT(in.temperature[i],in.pressure[i]);
-            }
-
           out.thermal_conductivities[i] = k_value;
           out.compressibilities[i] = compressibility(in.temperature[i], in.pressure[i], composition, in.position[i]);
 
@@ -1447,6 +1483,56 @@ namespace aspect
                 else
                   out.reaction_terms[i][c] = 0.0;
               }
+        }
+
+      /* We separate the calculation of specific heat and thermal expansivity,
+       * because they depend on cell-wise averaged values that are only available
+       * here
+       */
+      double average_temperature,average_density;
+      for (unsigned int i = 0; i < in.position.size(); ++i)
+        {
+         average_temperature += in.temperature[i];
+         average_density += out.densities[i];
+        }
+      average_temperature /= in.position.size();
+      average_density /= in.position.size();
+
+      for (unsigned int i = 0; i < in.position.size(); ++i)
+        {
+          if (!use_table_properties)
+            {
+              out.thermal_expansion_coefficients[i] = thermal_alpha;
+              out.specific_heat[i] = reference_specific_heat;
+            }
+          else
+            {
+              std_cxx1x::array<std::pair<double, unsigned int>,2> dH = enthalpy_derivative(in);
+
+              if (this->get_adiabatic_conditions().is_initialized()
+                  && (in.cell != this->get_dof_handler().end())
+                  && (dH[0].second > 0)
+                  && (dH[1].second > 0))
+                {
+                  out.thermal_expansion_coefficients[i] = (1 - average_density * dH[1].first) / average_temperature;
+                  out.specific_heat[i] = dH[0].first;
+                }
+              else
+                {
+                  if (material_lookup.size() == 1)
+                    {
+                      out.thermal_expansion_coefficients[i] = (1 - out.densities[i] * material_lookup[0]->dHdp(in.temperature[i],in.pressure[i])) / in.temperature[i];
+                      out.specific_heat[i] = material_lookup[0]->dHdT(in.temperature[i],in.pressure[i]);
+                    }
+                  else
+                    {
+                      ExcNotImplemented();
+                    }
+                }
+
+              out.thermal_expansion_coefficients[i] = std::max(std::min(out.thermal_expansion_coefficients[i],max_thermal_expansivity),min_thermal_expansivity);
+              out.specific_heat[i] = std::max(std::min(out.specific_heat[i],max_specific_heat),min_specific_heat);
+            }
         }
 
     }
@@ -1667,13 +1753,13 @@ namespace aspect
                              "varying viscosity over the whole mantle range. "
                              "Units: J/kg/K.");
           prm.declare_entry ("Minimum thermal expansivity", "1e-5",
-                             Patterns::Double (0),
+                             Patterns::Double (),
                              "The minimum thermal expansivity that is allowed in the whole model domain. This parameter "
                              "is introduced to limit global viscosity contrasts, but still allows for a widely "
                              "varying viscosity over the whole mantle range. "
                              "Units: 1/K.");
           prm.declare_entry ("Maximum thermal expansivity", "1e-3",
-                             Patterns::Double (0),
+                             Patterns::Double (),
                              "The maximum thermal expansivity that is allowed in the whole model domain. "
                              "This parameter is introduced to limit global viscosity contrasts, but still "
                              "allows for a widely varying viscosity over the whole mantle range. "

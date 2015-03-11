@@ -24,6 +24,7 @@
 
 #include <aspect/material_model/interface.h>
 #include <aspect/simulator_access.h>
+#include <deal.II/base/std_cxx1x/array.h>
 
 namespace aspect
 {
@@ -174,6 +175,21 @@ namespace aspect
                          const std::vector<double> &composition,
                          const SymmetricTensor<2,dim> &strain_rate,
                          const Point<dim> &position) const;
+
+        /**
+         * Returns the enthalpy as calculated by HeFESTo.
+         */
+        virtual double enthalpy (const double      temperature,
+                                 const double      pressure,
+                                 const std::vector<double> &compositional_fields,
+                                 const Point<dim> &position) const;
+
+        /**
+         * Returns the enthalpy derivatives for the evaluate function and
+         * postprocessors.
+         */
+        std_cxx1x::array<std::pair<double, unsigned int>,2>
+        enthalpy_derivative (const typename Interface<dim>::MaterialModelInputs &in) const;
 
         /**
          * Returns the p-wave velocity as calculated by HeFESTo.
