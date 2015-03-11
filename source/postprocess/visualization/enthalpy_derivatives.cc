@@ -115,7 +115,13 @@ namespace aspect
               in.composition[q][c] = uh[q][this->introspection().component_indices.compositional_fields[c]];
           }
 
-        in.cell = GridTools::find_active_cell_around_point(this->get_dof_handler(),in.position[0]);
+        Point<dim> average_position;
+        for (unsigned int q=0; q<n_quadrature_points; ++q)
+          {
+            average_position += in.position[q];
+          }
+        average_position /= n_quadrature_points;
+        in.cell = GridTools::find_active_cell_around_point(this->get_dof_handler(),average_position);
 
         const MaterialModel::DamageRheology<dim>* material_model =
             dynamic_cast<const MaterialModel::DamageRheology<dim> * > (&this->get_material_model());
