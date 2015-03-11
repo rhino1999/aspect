@@ -22,7 +22,6 @@
 #include <aspect/postprocess/visualization/material_properties.h>
 #include <aspect/simulator_access.h>
 
-#include <aspect/material_model/damage_rheology.h>
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/grid/grid_tools.h>
 #include <algorithm>
@@ -127,10 +126,16 @@ namespace aspect
               in.composition[q][c] = uh[q][this->introspection().component_indices.compositional_fields[c]];
           }
 
-        const bool material_model_needs_cell = (dynamic_cast<const MaterialModel::DamageRheology<dim> *>(&this->get_material_model()) != 0);
-        if (material_model_needs_cell)
+        if (use_cell_reference)
           {
-            in.cell = GridTools::find_active_cell_around_point(this->get_dof_handler(),in.position[0]);
+            Point<dim> average_position;
+            for (unsigned int q=0; q<n_quadrature_points; ++q)
+              {
+                average_position += in.position[q];
+              }
+            average_position /= n_quadrature_points;
+
+            in.cell = GridTools::find_active_cell_around_point(this->get_dof_handler(),average_position);
           }
         else
           in.cell = this->get_dof_handler().end(); // we do not know the cell index
@@ -206,6 +211,14 @@ namespace aspect
                                 "The following material properties are available:\n\n"
                                 +
                                 pattern_of_names);
+              prm.declare_entry("Use cell reference",
+                                "false",
+                                Patterns::Bool(),
+                                "Whether to look for the current cell reference and "
+                                "transmit it to the material model. Potentially "
+                                "slows down the postprocessing, but allows some "
+                                "material models to calculate material properties "
+                                "more accurately for postprocessing.");
             }
             prm.leave_subsection();
           }
@@ -226,6 +239,7 @@ namespace aspect
             prm.enter_subsection("Material properties");
             {
               property_names = Utilities::split_string_list(prm.get ("List of material properties"));
+              use_cell_reference = prm.get_bool ("Use cell reference");
             }
             prm.leave_subsection();
           }

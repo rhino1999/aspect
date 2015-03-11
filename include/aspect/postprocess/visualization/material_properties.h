@@ -92,7 +92,19 @@ namespace aspect
           parse_parameters (ParameterHandler &prm);
 
         private:
+          /**
+           * Names of the properties to calculate.
+           */
           std::vector<std::string> property_names;
+
+          /**
+           * Whether to look for the current cell reference and
+           * transmit it to the material model. Potentially
+           * slows down the postprocessing, but allows some
+           * material models to calculate material properties
+           * more accurately for postprocessing.
+           */
+          bool use_cell_reference;
       };
     }
   }
