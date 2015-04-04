@@ -1360,18 +1360,16 @@ namespace aspect
                        ExcMessage("This formalism is only implemented for one material "
                            "table."));
 
-          const unsigned int max_substeps = 1;
-
           for (unsigned int q=0; q<n_q_points; ++q)
             {
               for (unsigned int p=0; p<n_q_points; ++p)
                 {
                   if (std::fabs(temperatures[q] - temperatures[p]) > material_lookup[0]->get_pT_steps()[1] / 4.0)
                     {
-                      for (unsigned int substep = 0; substep < max_substeps; ++substep)
+                      for (unsigned int substep = 0; substep < max_latent_heat_substeps; ++substep)
                         {
                           const double current_pressure = pressures[q]
-                                                                    + (substep/(max_substeps-1))
+                                                                    + (substep/(max_latent_heat_substeps-1))
                                                                     * (pressures[p]-pressures[q]);
                           const double own_enthalpy = material_lookup[0]->enthalpy(temperatures[q],current_pressure);
                           const double enthalpy_p = material_lookup[0]->enthalpy(temperatures[p],current_pressure);
@@ -1381,10 +1379,10 @@ namespace aspect
                     }
                   if (std::fabs(pressures[q] - pressures[p]) > material_lookup[0]->get_pT_steps()[0] / 4.0)
                     {
-                      for (unsigned int substep = 0; substep < max_substeps; ++substep)
+                      for (unsigned int substep = 0; substep < max_latent_heat_substeps; ++substep)
                         {
                           const double current_temperature = temperatures[q]
-                                                                    + (substep/(max_substeps-1))
+                                                                    + (substep/(max_latent_heat_substeps-1))
                                                                     * (temperatures[p]-temperatures[q]);
                           const double own_enthalpy = material_lookup[0]->enthalpy(current_temperature,pressures[q]);
                           const double enthalpy_T = material_lookup[0]->enthalpy(current_temperature,pressures[p]);
@@ -1498,6 +1496,11 @@ namespace aspect
       average_temperature /= in.position.size();
       average_density /= in.position.size();
 
+      std_cxx1x::array<std::pair<double, unsigned int>,2> dH;
+
+      if (use_table_properties && (material_file_format == hefesto))
+        dH = enthalpy_derivative(in);
+
       for (unsigned int i = 0; i < in.position.size(); ++i)
         {
           if (!use_table_properties)
@@ -1505,10 +1508,8 @@ namespace aspect
               out.thermal_expansion_coefficients[i] = thermal_alpha;
               out.specific_heat[i] = reference_specific_heat;
             }
-          else
+          else if (material_file_format == hefesto)
             {
-              std_cxx1x::array<std::pair<double, unsigned int>,2> dH = enthalpy_derivative(in);
-
               if (this->get_adiabatic_conditions().is_initialized()
                   && (in.cell != this->get_dof_handler().end())
                   && (dH[0].second > 0)
@@ -1529,12 +1530,15 @@ namespace aspect
                       ExcNotImplemented();
                     }
                 }
-
-              out.thermal_expansion_coefficients[i] = std::max(std::min(out.thermal_expansion_coefficients[i],max_thermal_expansivity),min_thermal_expansivity);
-              out.specific_heat[i] = std::max(std::min(out.specific_heat[i],max_specific_heat),min_specific_heat);
             }
+          else if (material_file_format == perplex)
+            {
+              out.thermal_expansion_coefficients[i] = thermal_expansion_coefficient(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
+              out.specific_heat[i] = specific_heat(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
+            }
+          out.thermal_expansion_coefficients[i] = std::max(std::min(out.thermal_expansion_coefficients[i],max_thermal_expansivity),min_thermal_expansivity);
+          out.specific_heat[i] = std::max(std::min(out.specific_heat[i],max_specific_heat),min_specific_heat);
         }
-
     }
 
 
@@ -1764,6 +1768,10 @@ namespace aspect
                              "This parameter is introduced to limit global viscosity contrasts, but still "
                              "allows for a widely varying viscosity over the whole mantle range. "
                              "Units: 1/K.");
+          prm.declare_entry ("Maximum latent heat substeps", "1",
+                             Patterns::Integer (1),
+                             "The maximum number of substeps over the temperature pressure range "
+                             "to calculate the averaged enthalpy gradient over a cell.");
           prm.declare_entry ("Minimum grain size", "1e-5",
                              Patterns::Double (0),
                              "The minimum grain size that is used for the material model. This parameter "
@@ -1922,6 +1930,7 @@ namespace aspect
           max_specific_heat                     = prm.get_double ("Maximum specific heat");
           min_thermal_expansivity               = prm.get_double ("Minimum thermal expansivity");
           max_thermal_expansivity               = prm.get_double ("Maximum thermal expansivity");
+          max_latent_heat_substeps              = prm.get_integer ("Maximum latent heat substeps");
           min_grain_size                        = prm.get_double ("Minimum grain size");
           pv_grain_size_scaling                 = prm.get_double ("Lower mantle grain size scaling");
 

@@ -265,6 +265,7 @@ namespace aspect
         double max_specific_heat;
         double min_thermal_expansivity;
         double max_thermal_expansivity;
+        unsigned int max_latent_heat_substeps;
         double min_grain_size;
         double pv_grain_size_scaling;
 
@@ -396,7 +397,10 @@ namespace aspect
         std::vector<std::string> transition_phases;
         std::vector<double> transition_widths;
 
-        // TODO: Rene, make a comment what this stuff is for!
+
+        /* The following variables are properties of the material files
+         * we read in.
+         */
         std::string datadirectory;
         std::vector<std::string> material_file_names;
         std::vector<std::string> derivatives_file_names;
