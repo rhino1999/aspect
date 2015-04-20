@@ -1369,7 +1369,7 @@ namespace aspect
                       for (unsigned int substep = 0; substep < max_latent_heat_substeps; ++substep)
                         {
                           const double current_pressure = pressures[q]
-                                                                    + (substep/(max_latent_heat_substeps-1))
+                                                                    + ((double)(substep)/(double)(max_latent_heat_substeps-1))
                                                                     * (pressures[p]-pressures[q]);
                           const double own_enthalpy = material_lookup[0]->enthalpy(temperatures[q],current_pressure);
                           const double enthalpy_p = material_lookup[0]->enthalpy(temperatures[p],current_pressure);
@@ -1382,7 +1382,7 @@ namespace aspect
                       for (unsigned int substep = 0; substep < max_latent_heat_substeps; ++substep)
                         {
                           const double current_temperature = temperatures[q]
-                                                                    + (substep/(max_latent_heat_substeps-1))
+                                                                    + ((double)substep/(double)(max_latent_heat_substeps-1))
                                                                     * (temperatures[p]-temperatures[q]);
                           const double own_enthalpy = material_lookup[0]->enthalpy(current_temperature,pressures[q]);
                           const double enthalpy_T = material_lookup[0]->enthalpy(current_temperature,pressures[p]);
