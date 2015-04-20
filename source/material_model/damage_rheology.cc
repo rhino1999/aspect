@@ -1487,7 +1487,8 @@ namespace aspect
        * because they depend on cell-wise averaged values that are only available
        * here
        */
-      double average_temperature,average_density;
+      double average_temperature(0.0);
+      double average_density(0.0);
       for (unsigned int i = 0; i < in.position.size(); ++i)
         {
          average_temperature += in.temperature[i];
