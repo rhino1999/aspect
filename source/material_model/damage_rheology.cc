@@ -1360,6 +1360,9 @@ namespace aspect
                        ExcMessage("This formalism is only implemented for one material "
                            "table."));
 
+          // We have to take into account here that the p,T spacing of the table of material properties
+          // we use might be on a finer grid than our model. Because of that we average the enthalpy 
+          // derivatives over the whole cell, using finer temperature and pressure intervals
           for (unsigned int q=0; q<n_q_points; ++q)
             {
               for (unsigned int p=0; p<n_q_points; ++p)
@@ -1369,11 +1372,17 @@ namespace aspect
                       for (unsigned int substep = 0; substep < max_latent_heat_substeps; ++substep)
                         {
                           const double current_pressure = pressures[q]
-                                                                    + ((double)(substep)/(double)(max_latent_heat_substeps-1))
+                                                                    + ((double)(substep)/(double)(max_latent_heat_substeps))
                                                                     * (pressures[p]-pressures[q]);
-                          const double own_enthalpy = material_lookup[0]->enthalpy(temperatures[q],current_pressure);
-                          const double enthalpy_p = material_lookup[0]->enthalpy(temperatures[p],current_pressure);
-                          dHdT += (own_enthalpy-enthalpy_p)/(temperatures[q]-temperatures[p]);
+                          const double T1_substep = temperatures[q]
+                                                                    + ((double)(substep)/(double)(max_latent_heat_substeps))
+                                                                    * (temperatures[p]-temperatures[q]);
+                          const double T2_substep = temperatures[q]
+                                                                    + ((double)(substep+1)/(double)(max_latent_heat_substeps))
+                                                                    * (temperatures[p]-temperatures[q]);
+                          const double enthalpy2 = material_lookup[0]->enthalpy(T2_substep,current_pressure);
+                          const double enthalpy1 = material_lookup[0]->enthalpy(T1_substep,current_pressure);
+                          dHdT += (enthalpy2-enthalpy1)/(T2_substep-T1_substep);
                           T_points++;
                         }
                     }
@@ -1382,11 +1391,17 @@ namespace aspect
                       for (unsigned int substep = 0; substep < max_latent_heat_substeps; ++substep)
                         {
                           const double current_temperature = temperatures[q]
-                                                                    + ((double)substep/(double)(max_latent_heat_substeps-1))
+                                                                    + ((double)(substep)/(double)(max_latent_heat_substeps))
                                                                     * (temperatures[p]-temperatures[q]);
-                          const double own_enthalpy = material_lookup[0]->enthalpy(current_temperature,pressures[q]);
-                          const double enthalpy_T = material_lookup[0]->enthalpy(current_temperature,pressures[p]);
-                          dHdp += (own_enthalpy-enthalpy_T)/(pressures[q]-pressures[p]);
+                          const double p1_substep = pressures[q]
+                                                                    + ((double)(substep)/(double)(max_latent_heat_substeps))
+                                                                    * (pressures[p]-pressures[q]);
+                          const double p2_substep = pressures[q]
+                                                                    + ((double)(substep+1)/(double)(max_latent_heat_substeps))
+                                                                    * (pressures[p]-pressures[q]);
+                          const double enthalpy2 = material_lookup[0]->enthalpy(current_temperature,p2_substep);
+                          const double enthalpy1 = material_lookup[0]->enthalpy(current_temperature,p1_substep);
+                          dHdp += (enthalpy2-enthalpy1)/(p2_substep-p1_substep);
                           p_points++;
                        }
                     }
@@ -1499,7 +1514,7 @@ namespace aspect
 
       std_cxx1x::array<std::pair<double, unsigned int>,2> dH;
 
-      if (use_table_properties && (material_file_format == hefesto))
+      if (use_table_properties && use_enthalpy)
         dH = enthalpy_derivative(in);
 
       for (unsigned int i = 0; i < in.position.size(); ++i)
@@ -1509,7 +1524,7 @@ namespace aspect
               out.thermal_expansion_coefficients[i] = thermal_alpha;
               out.specific_heat[i] = reference_specific_heat;
             }
-          else if (material_file_format == hefesto)
+          else if (use_enthalpy)
             {
               if (this->get_adiabatic_conditions().is_initialized()
                   && (in.cell != this->get_dof_handler().end())
@@ -1532,11 +1547,12 @@ namespace aspect
                     }
                 }
             }
-          else if (material_file_format == perplex)
+          else
             {
               out.thermal_expansion_coefficients[i] = thermal_expansion_coefficient(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
               out.specific_heat[i] = specific_heat(in.temperature[i], in.pressure[i], in.composition[i], in.position[i]);
             }
+
           out.thermal_expansion_coefficients[i] = std::max(std::min(out.thermal_expansion_coefficients[i],max_thermal_expansivity),min_thermal_expansivity);
           out.specific_heat[i] = std::max(std::min(out.specific_heat[i],max_specific_heat),min_specific_heat);
         }
@@ -1825,6 +1841,12 @@ namespace aspect
                               Patterns::Selection ("perplex|hefesto"),
                               "The material file format to be read in the property "
                               " tables.");
+           prm.declare_entry ("Use enthalpy for material properties", "true",
+                              Patterns::Bool(),
+                              "Whether to use the enthalpy to calculate thermal "
+                              "expansivity and specific heat (if true) or use the "
+                              "thermal expansivity and specific heat values from "
+                              "the material properties table directly (if false).");
            prm.declare_entry ("Bilinear interpolation", "true",
                               Patterns::Bool (),
                               "Whether to use bilinear interpolation to compute "
@@ -1983,6 +2005,7 @@ namespace aspect
                      "have exactly one more entry than the number of phase transitions "
                      "(which is defined by the length of the lists of phase transition depths, ...)!"));
 
+          // parameters for reading in tables with material properties
           datadirectory        = prm.get ("Data directory");
           {
             const std::string      subst_text = "$ASPECT_SOURCE_DIR";
@@ -1997,6 +2020,7 @@ namespace aspect
           derivatives_file_names = Utilities::split_string_list
                                  (prm.get ("Derivatives file names"));
           use_table_properties = prm.get_bool ("Use table properties");
+          use_enthalpy = prm.get_bool ("Use enthalpy for material properties");
 
           if (prm.get ("Material file format") == "perplex")
             material_file_format = perplex;

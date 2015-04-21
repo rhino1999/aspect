@@ -406,6 +406,7 @@ namespace aspect
         std::vector<std::string> derivatives_file_names;
         unsigned int n_material_data;
         bool use_table_properties;
+        bool use_enthalpy;
         bool use_bilinear_interpolation;
 
 
