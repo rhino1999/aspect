@@ -110,6 +110,8 @@ namespace aspect
         double reference_rho;
         double reference_T;
         double eta;
+        double eta_min;
+        double eta_max;
         double composition_viscosity_prefactor;
         double thermal_viscosity_exponent;
         double thermal_alpha;

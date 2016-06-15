@@ -40,8 +40,8 @@ namespace aspect
           const double temperature_dependence = (reference_T > 0
                                                  ?
                                                  std::max(std::min(std::exp(-thermal_viscosity_exponent*delta_temp/reference_T),
-                                                                   1e2),
-                                                          1e-2)
+                                                                   1e10),
+                                                          1e-10)
                                                  :
                                                  1.0);
 
@@ -52,6 +52,8 @@ namespace aspect
                                           + in.composition[i][0] * log10(eta*composition_viscosity_prefactor*temperature_dependence)))
                                :
                                temperature_dependence * eta;
+
+          out.viscosities[i] = std::max(std::min(out.viscosities[i],eta_max),eta_min);
 
           const double c = (in.composition[i].size()>0)
                            ?
@@ -148,6 +150,12 @@ namespace aspect
                              Patterns::Double (0),
                              "The value of the constant viscosity $\\eta_0$. This viscosity may be "
                              "modified by both temperature and compositional dependencies. Units: $kg/m/s$.");
+          prm.declare_entry ("Max viscosity", "1e26",
+                             Patterns::Double (0),
+                             "The maximum viscosity in the model. Units: $kg/m/s$.");
+          prm.declare_entry ("Min viscosity", "1e17",
+                             Patterns::Double (0),
+                             "The minimum viscosity in the model. Units: $kg/m/s$.");
           prm.declare_entry ("Composition viscosity prefactor", "1.0",
                              Patterns::Double (0),
                              "A linear dependency of viscosity on the first compositional field. "
@@ -203,6 +211,8 @@ namespace aspect
           reference_rho              = prm.get_double ("Reference density");
           reference_T                = prm.get_double ("Reference temperature");
           eta                        = prm.get_double ("Viscosity");
+          eta_min                    = prm.get_double ("Min viscosity");
+          eta_max                    = prm.get_double ("Max viscosity");
           composition_viscosity_prefactor = prm.get_double ("Composition viscosity prefactor");
           thermal_viscosity_exponent = prm.get_double ("Thermal viscosity exponent");
           k_value                    = prm.get_double ("Thermal conductivity");
