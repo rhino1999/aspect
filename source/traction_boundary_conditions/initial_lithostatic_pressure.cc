@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2011 - 2015 by the authors of the ASPECT code.
+  Copyright (C) 2011 - 2016 by the authors of the ASPECT code.
 
   This file is part of ASPECT.
 
@@ -19,7 +19,7 @@
 */
 
 
-#include <aspect/traction_boundary_conditions/lithostatic_pressure.h>
+#include <aspect/traction_boundary_conditions/initial_lithostatic_pressure.h>
 #include <aspect/global.h>
 #include <aspect/utilities.h>
 #include <deal.II/base/std_cxx11/array.h>
@@ -27,7 +27,7 @@
 #include <aspect/geometry_model/sphere.h>
 #include <aspect/geometry_model/spherical_shell.h>
 #include <aspect/geometry_model/chunk.h>
-//#include "two_merged_chunks.h"
+//#include "layered_chunk.h"
 #include <aspect/geometry_model/ellipsoidal_chunk.h>
 #include <aspect/geometry_model/box.h>
 #include <aspect/geometry_model/two_merged_boxes.h>
@@ -39,7 +39,7 @@ namespace aspect
 
     template <int dim>
     void
-    LP<dim>::initialize()
+    InitialLithostaticPressure<dim>::initialize()
     {
       // Ensure the traction boundary conditions are used
       // There might be other types of traction boundary conditions specified as well,
@@ -69,7 +69,14 @@ namespace aspect
       pressure[0]    = this->get_surface_pressure();
 
       // For spherical(-like) domains, modify the representative point
-      Point<dim> spherical_representative_point(representative_point);
+      //Point<dim> spherical_representative_point(representative_point);
+      std_cxx11::array<double, dim> spherical_representative_point;
+      for (unsigned int d=0; d<dim; d++)
+    	  spherical_representative_point[d] = representative_point[d];
+      // go from latitude to co-latitude
+      if (dim == 3)
+    	  spherical_representative_point[2] = 90.0 - spherical_representative_point[2];
+
       const double degrees_to_radians = dealii::numbers::PI/180.0;
 
       // check location of representative point and
@@ -87,9 +94,17 @@ namespace aspect
           spherical_representative_point[0] = gm->outer_radius();
 
           if (dim == 3)
+          {
+        	  AssertThrow(spherical_representative_point[2] >= 0.0 &&
+        			      spherical_representative_point[2] <= 90.0,
+        			      ExcMessage("Latitude of representative point outside shell domain."));
+
             spherical_representative_point[2] *= degrees_to_radians;
+          }
         }
-      else if (const GeometryModel::Chunk<dim> *gm = dynamic_cast<const GeometryModel::Chunk<dim>*> (&this->get_geometry_model()))
+      //      TODO There will be a LayeredChunk soon :)
+      else if (const GeometryModel::Chunk<dim> *gm = dynamic_cast<const GeometryModel::Chunk<dim>*> (&this->get_geometry_model()) /*||
+    		  const GeometryModel::LayeredChunk<dim> *gm = dynamic_cast<const GeometryModel::LayeredChunk<dim>*> (&this->get_geometry_model())*/)
         {
           spherical_representative_point[1] *= degrees_to_radians;
 
@@ -109,51 +124,33 @@ namespace aspect
           // set outer radius
           spherical_representative_point[0] = gm->outer_radius();
         }
-//      TODO There will be a LayeredChunk soon :)
-//      else if (const GeometryModel::TwoMergedChunks<dim> *gm = dynamic_cast<const GeometryModel::TwoMergedChunks<dim>*> (&this->get_geometry_model()))
-//        {
-//          spherical_representative_point[1] *= degrees_to_radians;
-//
-//          AssertThrow(spherical_representative_point[1] >= gm->west_longitude() &&
-//                      spherical_representative_point[1] <= gm->east_longitude(),
-//                      ExcMessage("Longitude of representative point outside chunk domain."));
-//
-//          if (dim ==3)
-//            {
-//              spherical_representative_point[2] *= degrees_to_radians;
-//
-//              AssertThrow(spherical_representative_point[2] >= gm->south_latitude() &&
-//                          spherical_representative_point[2] <= gm->north_latitude(),
-//                          ExcMessage("Latitude of representative point outside chunk domain."));
-//            }
-            // set outer radius
-//          spherical_representative_point[0] = gm->outer_radius();
-//        }
       else if (const GeometryModel::EllipsoidalChunk<dim> *gm = dynamic_cast<const GeometryModel::EllipsoidalChunk<dim>*> (&this->get_geometry_model()))
         {
-          // NB: the semi major axis a is only equal to the radius at all surface points if the eccentricity is zero.
+          // If the eccentricity of the EllipsoidalChunk is non-zero, different boundaries will not have the
+          // same radius and calculating one pressure profile does not make sense
+    	  // Using the EllipsoidalChunk with eccentricity zero can be useful however,
+    	  // because the domain can be non-coordinate parallel.
 
-          // TODO min/max angles are not available from geometry plugin
-//          AssertThrow(//spherical_representative_point[0] >= gm->inner_radius() &&
-//                      spherical_representative_point[0] <= gm->get_semi_major_axis_a() &&
-//                      spherical_representative_point[1] >= gm->minimum_longitude() &&
-//                      spherical_representative_point[1] <= gm->maximum_longitude(),
-//                      ExcMessage("Longitude of representative point outside chunk domain."));
+    	  AssertThrow(gm->get_eccentricity() == 0.0, ExcMessage("This plugin cannot be used with a non-zero eccentricity. "));
+
+    	  const std::vector<Point<2> > corners = gm->get_corners();
+
+          AssertThrow(spherical_representative_point[1] >= corners[1][1] &&
+                      spherical_representative_point[1] <= corners[0][1],
+                      ExcMessage("Longitude of representative point outside chunk domain."));
 
           spherical_representative_point[1] *= degrees_to_radians;
 
           if (dim ==3)
             {
 
-//              AssertThrow(spherical_representative_point[2] >= gm->minimum_latitude() &&
-//                          spherical_representative_point[2] <= gm->maximum_latitude(),
-//                          ExcMessage("Representative point outside chunk domain."));
+              AssertThrow(spherical_representative_point[2] >= corners[2][2] &&
+                          spherical_representative_point[2] <= corners[1][2],
+                          ExcMessage("Latitude of representative point outside chunk domain."));
 
               spherical_representative_point[2] *= degrees_to_radians;
             }
 
-          // TODO this is only correct for eccentricity zero
-          // or ask for the correct radius from user
           spherical_representative_point[0] = gm->get_semi_major_axis_a();
         }
       else if (const GeometryModel::Sphere<dim> *gm = dynamic_cast<const GeometryModel::Sphere<dim>*> (&this->get_geometry_model()))
@@ -162,6 +159,8 @@ namespace aspect
           spherical_representative_point[1] *= degrees_to_radians;
           spherical_representative_point[2] *= degrees_to_radians;
         }
+      // TODO: would be nice if we could combine Box and TwoMergedBoxes, but get_extents only exist for these
+      // two plugins, not all geometry models
       else if (const GeometryModel::Box<dim> *gm = dynamic_cast<const GeometryModel::Box<dim>*> (&this->get_geometry_model()))
         {
           const Point<dim> extents = gm->get_extents();
@@ -174,14 +173,14 @@ namespace aspect
           // set z of surface
           representative_point[dim-1] = extents[dim-1];
         }
-      else if (const GeometryModel::TwoMergedBoxes<dim> *gm = dynamic_cast<const GeometryModel::TwoMergedBoxes<dim>*> (&this->get_geometry_model()))
+      else if (const GeometryModel::TwoMergedBoxes<dim> *gm =dynamic_cast<const GeometryModel::TwoMergedBoxes<dim>*> (&this->get_geometry_model()))
         {
           const Point<dim> extents = gm->get_extents();
 
           for (unsigned int d = 0; d < dim-1; ++d)
             AssertThrow(representative_point[d] <= extents[d], ExcMessage("Coordinate "
                                                                           + dealii::Utilities::int_to_string(d)
-                                                                          +"Representative point outside box domain."));
+                                                                          + " of representative point outside box domain."));
 
           // set z of surface
           representative_point[dim-1] = extents[dim-1];
@@ -198,11 +197,12 @@ namespace aspect
       if (dynamic_cast<const GeometryModel::SphericalShell<dim>*> (&this->get_geometry_model()) != 0 ||
           dynamic_cast<const GeometryModel::Sphere<dim>*> (&this->get_geometry_model()) != 0 ||
           dynamic_cast<const GeometryModel::Chunk<dim>*> (&this->get_geometry_model()) != 0 ||
-          /*dynamic_cast<const GeometryModel::TwoMergedChunks<dim>*> (&this->get_geometry_model()) != 0*/
+          /*dynamic_cast<const GeometryModel::LayeredChunk<dim>*> (&this->get_geometry_model()) != 0*/
           dynamic_cast<const GeometryModel::EllipsoidalChunk<dim>*> (&this->get_geometry_model()) != 0 )
         {
           // set spherical surface coordinates
-          in0.position[0] = spherical_to_cart(spherical_representative_point);
+          //in0.position[0] = spherical_to_cart(spherical_representative_point);
+          in0.position[0] = aspect::Utilities::cartesian_coordinates<dim>(spherical_representative_point);
         }
       // and for cartesian domains
       else
@@ -266,7 +266,8 @@ namespace aspect
             {
               // decrease radius with depth increment
               spherical_representative_point[0] -= delta_z;
-              in.position[0] = spherical_to_cart(spherical_representative_point);
+              //in.position[0] = spherical_to_cart(spherical_representative_point);
+              in.position[0] = aspect::Utilities::cartesian_coordinates<dim>(spherical_representative_point);
             }
           // and for cartesian domains
           else
@@ -309,7 +310,7 @@ namespace aspect
 
     template <int dim>
     Tensor<1,dim>
-    LP<dim>::
+    InitialLithostaticPressure<dim>::
     traction (const Point<dim> &p,
               const Tensor<1,dim> &normal) const
     {
@@ -321,14 +322,14 @@ namespace aspect
       // assign correct value to traction
       // get the lithostatic pressure from a linear interpolation of
       // the calculated profile
-      traction = -get_pressure(p) * normal;
+      traction = -interpolate_pressure(p) * normal;
       return traction;
     }
 
     template <int dim>
     double
-    LP<dim>::
-    get_pressure (const Point<dim> &p) const
+    InitialLithostaticPressure<dim>::
+    interpolate_pressure (const Point<dim> &p) const
     {
       // depth at which we need the pressure
       const double z = this->get_geometry_model().depth(p);
@@ -354,40 +355,10 @@ namespace aspect
       return d*pressure[i]+(1-d)*pressure[i+1];
     }
 
-    template <int dim>
-    Point<dim>
-    LP<dim>::
-    spherical_to_cart(const Point<dim >sphere_coord) const
-    {
-      // Input: radius, longitude, latitude
-      Point<dim> cart_coord;
-
-      switch (dim)
-        {
-          case 2:
-          {
-            cart_coord[0] = sphere_coord[0] * std::cos(sphere_coord[1]); // X
-            cart_coord[1] = sphere_coord[0] * std::sin(sphere_coord[1]); // Y
-            break;
-          }
-          case 3:
-          {
-            cart_coord[0] = sphere_coord[0] * std::sin(0.5*numbers::PI-sphere_coord[2]) * std::cos(sphere_coord[1]); // X
-            cart_coord[1] = sphere_coord[0] * std::sin(0.5*numbers::PI-sphere_coord[2]) * std::sin(sphere_coord[1]); // Y
-            cart_coord[2] = sphere_coord[0] * std::cos(0.5*numbers::PI-sphere_coord[2]); // Z
-            break;
-          }
-          default:
-            Assert (false, ExcNotImplemented());
-            break;
-        }
-
-      return cart_coord;
-    }
 
     template <int dim>
     void
-    LP<dim>::declare_parameters (ParameterHandler &prm)
+    InitialLithostaticPressure<dim>::declare_parameters (ParameterHandler &prm)
     {
       prm.enter_subsection("Boundary traction model");
       {
@@ -412,7 +383,7 @@ namespace aspect
 
     template <int dim>
     void
-    LP<dim>::parse_parameters (ParameterHandler &prm)
+    InitialLithostaticPressure<dim>::parse_parameters (ParameterHandler &prm)
     {
       unsigned int refinement;
       prm.enter_subsection("Mesh refinement");
@@ -451,7 +422,7 @@ namespace aspect
 {
   namespace TractionBoundaryConditions
   {
-    ASPECT_REGISTER_TRACTION_BOUNDARY_CONDITIONS(LP,
+    ASPECT_REGISTER_TRACTION_BOUNDARY_CONDITIONS(InitialLithostaticPressure,
                                                  "lithostatic pressure",
                                                  "Implementation of a model in which the boundary "
                                                  "traction is given in terms of a normal traction component "
@@ -461,7 +432,8 @@ namespace aspect
                                                  "\n\n"
                                                  "The lithostatic pressure is calculated by integrating "
                                                  "the pressure downward based on the initial composition "
-                                                 "and temperature. "
+                                                 "and temperature at the user-specified point. "
+                                                 "Gravity is expected to point along the depth direction. "
                                                  "\n\n"
                                                  "Note that the tangential velocity component(s) should be set "
                                                  "to zero. ")
