@@ -72,10 +72,10 @@ namespace aspect
       //Point<dim> spherical_representative_point(representative_point);
       std_cxx11::array<double, dim> spherical_representative_point;
       for (unsigned int d=0; d<dim; d++)
-    	  spherical_representative_point[d] = representative_point[d];
+        spherical_representative_point[d] = representative_point[d];
       // go from latitude to co-latitude
       if (dim == 3)
-    	  spherical_representative_point[2] = 90.0 - spherical_representative_point[2];
+        spherical_representative_point[2] = 90.0 - spherical_representative_point[2];
 
       const double degrees_to_radians = dealii::numbers::PI/180.0;
 
@@ -94,17 +94,17 @@ namespace aspect
           spherical_representative_point[0] = gm->outer_radius();
 
           if (dim == 3)
-          {
-        	  AssertThrow(spherical_representative_point[2] >= 0.0 &&
-        			      spherical_representative_point[2] <= 90.0,
-        			      ExcMessage("Latitude of representative point outside shell domain."));
+            {
+              AssertThrow(spherical_representative_point[2] >= 0.0 &&
+                          spherical_representative_point[2] <= 90.0,
+                          ExcMessage("Latitude of representative point outside shell domain."));
 
-            spherical_representative_point[2] *= degrees_to_radians;
-          }
+              spherical_representative_point[2] *= degrees_to_radians;
+            }
         }
       //      TODO There will be a LayeredChunk soon :)
       else if (const GeometryModel::Chunk<dim> *gm = dynamic_cast<const GeometryModel::Chunk<dim>*> (&this->get_geometry_model()) /*||
-    		  const GeometryModel::LayeredChunk<dim> *gm = dynamic_cast<const GeometryModel::LayeredChunk<dim>*> (&this->get_geometry_model())*/)
+          const GeometryModel::LayeredChunk<dim> *gm = dynamic_cast<const GeometryModel::LayeredChunk<dim>*> (&this->get_geometry_model())*/)
         {
           spherical_representative_point[1] *= degrees_to_radians;
 
@@ -128,12 +128,12 @@ namespace aspect
         {
           // If the eccentricity of the EllipsoidalChunk is non-zero, different boundaries will not have the
           // same radius and calculating one pressure profile does not make sense
-    	  // Using the EllipsoidalChunk with eccentricity zero can be useful however,
-    	  // because the domain can be non-coordinate parallel.
+          // Using the EllipsoidalChunk with eccentricity zero can be useful however,
+          // because the domain can be non-coordinate parallel.
 
-    	  AssertThrow(gm->get_eccentricity() == 0.0, ExcMessage("This plugin cannot be used with a non-zero eccentricity. "));
+          AssertThrow(gm->get_eccentricity() == 0.0, ExcMessage("This plugin cannot be used with a non-zero eccentricity. "));
 
-    	  const std::vector<Point<2> > corners = gm->get_corners();
+          const std::vector<Point<2> > corners = gm->get_corners();
 
           AssertThrow(spherical_representative_point[1] >= corners[1][1] &&
                       spherical_representative_point[1] <= corners[0][1],
