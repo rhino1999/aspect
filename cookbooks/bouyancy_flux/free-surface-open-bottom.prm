@@ -1,0 +1,175 @@
+# Very simple cookbook which demonstrates the use of
+# a free surface for computing surface topography.
+# The model is 2D, with a rising blob beneath a free
+# surface.  We output the maximum and minimum
+# topography at every time step.
+
+
+set Dimension = 2
+
+# Free surface calculations are typically more difficult to keep
+# stable than others, so we take a smaller time step
+set CFL number                             = 0.2
+
+set End time                               = 1e8
+set Output directory                       = output_free_3
+set Adiabatic surface temperature          = 1600   # this will be the reference temperature for computing the heat flux
+
+# Pressure normalization must be set to ``no'' for free surface
+# models, as we assume the pressure is zero at the free surface
+set Pressure normalization                 = no
+set Use years in output instead of seconds = true
+
+
+# We let the boundaries be zero temperature, as we are just
+# modelling a single rising blob
+subsection Boundary temperature model
+  set Model name = initial temperature
+end
+
+subsection Boundary composition model
+  set Model name = initial composition
+end
+
+subsection Compositional fields
+  set Number of fields = 1
+  set Names of fields = lithosphere
+end
+
+
+subsection Discretization
+  set Use locally conservative discretization = false
+  subsection Stabilization parameters
+    set alpha = 2
+    set beta  = 0.078
+    set cR    = 0.5  
+  end
+end
+
+
+
+# We can use the normal box geometry model
+# for free surface modelling, we just need
+# to specify further down which surface
+# is to be the free one.
+subsection Geometry model
+  set Model name = box
+  subsection Box
+    set X extent = 1000.e3 
+    set Y extent = 400.e3
+    set X repetitions = 5
+    set Y repetitions = 2
+  end
+end
+
+
+subsection Gravity model
+  set Model name = vertical
+  subsection Vertical
+    set Magnitude = 10.0
+  end
+end
+
+
+subsection Initial conditions
+  set Model name = adiabatic
+  subsection Adiabatic
+    set Age bottom boundary layer = 0e0
+    set Age top boundary layer    = 1e8
+    set Amplitude                 = 200
+    set Position                  = center
+    set Radius                    = 50000
+    set Subadiabaticity           = 0e0
+  end
+end
+
+subsection Compositional initial conditions
+  set Model name = function
+  subsection Function
+    set Function expression = if(z>300000,1,0)
+    set Variable names      = x,z
+  end
+end
+
+subsection Boundary traction model
+  subsection Lithostatic pressure
+    set Representative point = 0,0
+  end
+end
+
+# A fairly standard simple geometry model
+subsection Material model
+  set Model name = simple
+
+  subsection Simple model
+    set Reference density             = 3300
+    set Reference specific heat       = 1250
+    set Reference temperature         = 1600
+    set Thermal conductivity          = 1.0         # low thermal conductivity for a sharp blob
+    set Thermal expansion coefficient = 4e-5
+    set Viscosity                     = 1.e19
+    set Min viscosity                 = 1.e17
+    set Max viscosity                 = 1.e24
+    set Thermal viscosity exponent    = 20
+    set Composition viscosity prefactor = 1e10      # additional prefactor for the lithosphere
+    set Density differential for compositional field 1 = -600   # density difference for the lithosphere
+  end
+end
+
+subsection Mesh refinement
+  set Additional refinement times        =
+  set Initial adaptive refinement        = 0              
+  set Initial global refinement          = 3    
+  set Refinement fraction                = 0.01
+  set Coarsening fraction                = 0.9
+  set Strategy                           = minimum refinement function, topography
+  set Time steps between mesh refinement = 0  
+
+  subsection Minimum refinement function
+    set Coordinate system   = cartesian
+    set Function expression = 4
+    set Variable names      = x,z
+  end           
+end
+
+
+subsection Model settings
+  set Include adiabatic heating               = false
+  set Include shear heating                   = false
+  set Fixed temperature boundary indicators   = bottom, top
+  set Fixed composition boundary indicators   = bottom, top
+  set Prescribed velocity boundary indicators = right y:function, left y:function #top:function
+  set Prescribed traction boundary indicators = bottom:lithostatic pressure,  right x:lithostatic pressure, left x:lithostatic pressure
+  set Tangential velocity boundary indicators = 
+  set Remove nullspace                        = linear x momentum
+
+  set Free surface boundary indicators = top
+end
+
+subsection Boundary velocity model
+  subsection Function
+    set Function expression = 0.0; 0
+    set Variable names      = x,z
+  end    
+end
+
+subsection Free surface
+  set Free surface stabilization theta = 0.5
+  set Additional tangential mesh velocity boundary indicators = left, right
+end
+
+# We also include the topography postprocessor, which just calculates
+# the maximum and minimun topography on your free surface at
+# every time step.  
+subsection Postprocess
+  set List of postprocessors = visualization,topography,velocity statistics,dynamic topography, plume heat flux statistics, heat flux statistics, dynamic topography
+  subsection Visualization
+    set Time between graphical output = 0
+    set List of output variables      = material properties,dynamic topography, strain rate, nonadiabatic pressure
+    set Interpolate output            = true
+
+    subsection Dynamic Topography
+      set Subtract mean of dynamic topography = false
+    end
+  end
+end
