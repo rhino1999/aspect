@@ -1,0 +1,150 @@
+
+############### Global parameters
+
+set Dimension                              = 2
+set Start time                             = 0
+set End time                               = 0
+set Use years in output instead of seconds = true
+set Linear solver tolerance                = 1e-9
+set Nonlinear solver scheme                = iterated Stokes
+set Nonlinear solver tolerance             = 1e-8
+set Max nonlinear iterations               = 50
+set Number of cheap Stokes solver steps    = 0
+set CFL number                             = 0.5
+set Output directory                       = new_boundary_compressible11
+set Timing output frequency                = 1
+set Pressure normalization                 = no
+#set Use direct solver for Stokes system    = true
+
+############### Parameters describing the model
+
+subsection Geometry model
+  set Model name = box
+
+  subsection Box
+    set X repetitions  = 4
+    set X extent  = 120e3
+    set Y extent  = 30e3
+  end
+end
+
+subsection Model settings
+  set Include adiabatic heating               = false
+  set Include shear heating                   = false
+  set Prescribed velocity boundary indicators = left: function, right:function
+  set Tangential velocity boundary indicators = bottom
+  set Free surface boundary indicators        = top
+end
+
+subsection Compositional fields
+  set Number of fields          = 1
+end
+
+# Advecting the free surface vertically rather than
+# in the surface normal direction can result in a
+# more stable mesh when the deformation is large
+subsection Free surface
+  set Surface velocity projection = vertical
+end
+
+############### Material model
+
+subsection Material model
+  set Model name = drucker prager
+  subsection Drucker Prager
+    set Reference density = 2700 
+    set Reference viscosity = 1e21
+    set Reference compressibility = 5e-12
+    subsection Viscosity
+       set Minimum viscosity = 1e20
+       set Maximum viscosity = 1e300
+       set Background viscosity = 1e24
+       set Reference strain rate = 5.2e-15
+       set Angle of internal friction = 30
+       set Cohesion = 1e8
+    end
+  end  
+  subsection Averaging
+    # Chose the averaging operation to use.
+#    set Averaging operation = geometric average
+  end
+
+end
+
+subsection Gravity model
+  set Model name = vertical
+  subsection Vertical
+    set Magnitude = 9.81
+  end
+end
+
+
+subsection Boundary velocity model
+  subsection Function
+    set Variable names      = x,y
+    set Function constants  = cm=0.01, year=1 
+    set Function expression =  if (x<40e3 , 1*cm/year, -1*cm/year) ; 0 
+  end
+end
+
+
+
+
+############### Parameters describing the temperature field
+# As above, there is no need to set anything for the
+# temperature boundary conditions.
+
+subsection Boundary temperature model
+  set Model name = box
+end
+
+subsection Initial conditions
+  set Model name = function
+
+  subsection Function
+    set Function expression = 0
+  end
+end
+
+subsection Compositional initial conditions
+  set Model name = function
+
+  subsection Function
+    set Function expression = 0.5+0.5*tanh((y-7.5e3 - 2.5e3*exp(-(x-60e3)*(x-60e3)/4e6))/250)
+  end
+end
+
+
+############### Parameters describing the discretization
+# The following parameters describe how often we want to refine
+# the mesh globally and adaptively, what fraction of cells should
+# be refined in each adaptive refinement step, and what refinement
+# indicator to use when refining the mesh adaptively.
+
+subsection Mesh refinement
+  set Initial adaptive refinement        = 0
+  set Initial global refinement          = 8
+  set Refinement fraction                = 0.5
+  set Strategy                           = strain rate 
+  set Coarsening fraction                = 0.05
+  set Time steps between mesh refinement = 1
+  set Run postprocessors on initial refinement = true
+end
+
+
+############### Parameters describing what to do with the solution
+# The final section allows us to choose which postprocessors to
+# run at the end of each time step. We select to generate graphical
+# output that will consist of the primary variables (velocity, pressure,
+# temperature and the compositional fields) as well as the density and
+# viscosity. We also select to compute some statistics about the
+# velocity field.
+
+subsection Postprocess
+  set List of postprocessors = visualization, velocity statistics, basic statistics
+  subsection Visualization
+    set List of output variables = density, viscosity, strain rate, error indicator, friction heating, partition
+    set Time between graphical output = 0
+    set Interpolate output = false
+  end
+end

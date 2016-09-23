@@ -33,7 +33,7 @@ namespace aspect
     DruckerPrager<dim>::
     viscosity (const double /*temperature*/,
                const double pressure,
-               const std::vector<double> &/*composition*/,
+               const std::vector<double> &composition,
                const SymmetricTensor<2,dim> &strain_rate,
                const Point<dim> &/*position*/) const
     {
@@ -46,7 +46,7 @@ namespace aspect
       // invariant of the deviatoric strain rate tensor.
       // This is equal to the negative of the second principle
       // invariant calculated with the function second_invariant.
-      const double strain_rate_dev_inv2 = ( (this->get_timestep_number() == 0 && strain_rate.norm() <= std::numeric_limits<double>::min())
+      const double strain_rate_dev_inv2 = ( strain_rate.norm() <= std::numeric_limits<double>::min()
                                             ?
                                             reference_strain_rate * reference_strain_rate
                                             :
@@ -56,23 +56,31 @@ namespace aspect
       // strain rates. We expect the viscosity to approach the maximum_viscosity
       // in these cases. This check prevents a division-by-zero.
       if (std::sqrt(strain_rate_dev_inv2) <= std::numeric_limits<double>::min())
-        return maximum_viscosity;
+        return background_viscosity;
 
-      // To avoid negative yield strengths and eventually viscosities,
-      // we make sure the pressure is not negative
       const double strength = ( (dim==3)
                                 ?
-                                ( 6.0 * cohesion * std::cos(phi) + 2.0 * std::max(pressure,0.0) * std::sin(phi) )
+                                ( 6.0 * cohesion * std::cos(phi) + 2.0 * pressure * std::sin(phi) )
                                 / ( std::sqrt(3.0) * ( 3.0 + std::sin(phi) ) )
                                 :
-                                cohesion * std::cos(phi) + std::max(pressure,0.0) * std::sin(phi) );
+                                cohesion * std::cos(phi) + pressure * std::sin(phi) );
 
       // Rescale the viscosity back onto the yield surface
-      const double viscosity = strength / ( 2.0 * std::sqrt(strain_rate_dev_inv2) );
+      double viscosity = strength / ( 2.0 * std::sqrt(strain_rate_dev_inv2) );
+
+      // Harmonic average with the background viscosity
+      viscosity = (viscosity < minimum_viscosity
+                  ?
+                  1.0 / ((1.0 / minimum_viscosity) + (1.0 / background_viscosity))
+                  :
+                  1.0 / ((1.0 / viscosity) + (1.0 / background_viscosity)));
+
+      // Add composition dependence
+      viscosity = std::exp(composition[0]*std::log(viscosity) + (1 - composition[0])*std::log(reference_eta));
 
       // Cut off the viscosity between a minimum and maximum value to avoid
       // a numerically unfavourable large viscosity range.
-      const double effective_viscosity = 1.0 / ( ( 1.0 / ( viscosity + minimum_viscosity ) ) + ( 1.0 / maximum_viscosity ) );
+      const double effective_viscosity = std::min(std::max(viscosity,minimum_viscosity),maximum_viscosity);
 
       return effective_viscosity;
 
@@ -145,11 +153,14 @@ namespace aspect
     double
     DruckerPrager<dim>::
     density (const double temperature,
-             const double,
+             const double pressure,
              const std::vector<double> &, /*composition*/
-             const Point<dim> &) const
+             const Point<dim> &position) const
     {
-      return reference_rho * (1 - thermal_alpha * (temperature - reference_T));
+      double rho = reference_rho * std::exp(reference_compressibility * (pressure));
+      if (this->get_adiabatic_conditions().is_initialized())
+        rho *= (1 - thermal_alpha * (temperature - this->get_adiabatic_conditions().temperature(position)));
+      return rho;
     }
 
 
@@ -173,7 +184,7 @@ namespace aspect
                      const std::vector<double> &, /*composition*/
                      const Point<dim> &) const
     {
-      return 0.0;
+      return reference_compressibility;
     }
 
 
@@ -183,7 +194,7 @@ namespace aspect
     DruckerPrager<dim>::
     is_compressible () const
     {
-      return false;
+      return (reference_compressibility != 0);
     }
 
 
@@ -218,6 +229,10 @@ namespace aspect
                              Patterns::Double (0),
                              "The value of the thermal expansion coefficient $\\beta$. "
                              "Units: $1/K$.");
+          prm.declare_entry ("Reference compressibility", "4e-12",
+                             Patterns::Double (0),
+                             "The value of the reference compressibility. "
+                             "Units: $1/Pa$.");
           prm.enter_subsection ("Viscosity");
           {
             prm.declare_entry ("Minimum viscosity", "1e19",
@@ -226,6 +241,9 @@ namespace aspect
             prm.declare_entry ("Maximum viscosity", "1e24",
                                Patterns::Double (0),
                                "The value of the maximum viscosity cutoff $\\eta_max$. Units: $Pa\\;s$.");
+            prm.declare_entry ("Background viscosity", "1e23",
+                               Patterns::Double (0),
+                               "The background viscosity for the visco-plastic model. Units: $Pa\\;s$.");
             prm.declare_entry ("Reference strain rate", "1e-15",
                                Patterns::Double (0),
                                "The value of the initial strain rate prescribed during the "
@@ -263,10 +281,12 @@ namespace aspect
           thermal_k                  = prm.get_double ("Thermal conductivity");
           reference_specific_heat    = prm.get_double ("Reference specific heat");
           thermal_alpha              = prm.get_double ("Thermal expansion coefficient");
+          reference_compressibility  = prm.get_double ("Reference compressibility");
           prm.enter_subsection ("Viscosity");
           {
             minimum_viscosity        = prm.get_double ("Minimum viscosity");
             maximum_viscosity        = prm.get_double ("Maximum viscosity");
+            background_viscosity     = prm.get_double ("Background viscosity");
             reference_strain_rate    = prm.get_double ("Reference strain rate");
             // Convert degrees to radians
             phi                      = prm.get_double ("Angle of internal friction") * numbers::PI/180.0;

@@ -1041,8 +1041,8 @@ namespace aspect
                                        // -div(u) as the adjoint operator of grad(p) (see above where
                                        // we assemble the matrix)
                                        (pressure_scaling *
-                                        compressibility * density *
-                                        (scratch.velocity_values[q] * gravity) *
+                                        compressibility *
+                                        (scratch.velocity_values[q] * scratch.material_model_inputs.pressure_gradient[q]) *
                                         scratch.phi_p[i])
                                      )
                                      * scratch.finite_element_values.JxW(q);

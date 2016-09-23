@@ -182,6 +182,9 @@ namespace aspect
         double thermal_alpha;
         double reference_specific_heat;
         double thermal_k;
+        double reference_compressibility;
+
+        double background_viscosity;
 
         /**
          * The angle of internal friction

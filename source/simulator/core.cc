@@ -883,12 +883,26 @@ namespace aspect
               for (unsigned int i=0; i<introspection.component_masks.velocities.size(); ++i)
                 mask[i]=introspection.component_masks.velocities[i];
             }
-
+/*
           VectorTools::interpolate_boundary_values (dof_handler,
                                                     p->first,
                                                     vel,
                                                     current_constraints,
                                                     mask);
+                                                    */
+
+          std::set<types::boundary_id> id_set;
+          id_set.insert(p->first);
+
+          typename FunctionMap< dim >::type function_map;
+          function_map [p->first] = &vel;
+
+          VectorTools::compute_nonzero_normal_flux_constraints (dof_handler,
+                                                                0,
+                                                                id_set,
+                                                                function_map,
+                                                                current_constraints,
+                                                                *mapping);
         }
     }
 
