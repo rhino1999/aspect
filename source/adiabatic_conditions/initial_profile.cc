@@ -25,6 +25,7 @@
 #include <aspect/geometry_model/box.h>
 
 #include <deal.II/base/std_cxx11/bind.h>
+#include <deal.II/base/signaling_nan.h>
 
 
 namespace aspect
@@ -36,8 +37,8 @@ namespace aspect
       :
       initialized(false),
       n_points(1000),
-      temperatures(n_points, -1),
-      pressures(n_points, -1)
+      temperatures(n_points, numbers::signaling_nan<double>()),
+      pressures(n_points, numbers::signaling_nan<double>())
     {}
 
     template <int dim>
@@ -169,7 +170,7 @@ namespace aspect
           return pressures.back();
         }
 
-      const unsigned int i = static_cast<unsigned int>(z/delta_z);
+      const unsigned int i = static_cast<unsigned int>((z/delta_z)*(1.-2*std::numeric_limits<double>::epsilon()));
       Assert ((z/delta_z) >= 0, ExcInternalError());
       Assert (i+1 < pressures.size(), ExcInternalError());
 
@@ -194,7 +195,7 @@ namespace aspect
           return temperatures.back();
         }
 
-      const unsigned int i = static_cast<unsigned int>(z/delta_z);
+      const unsigned int i = static_cast<unsigned int>((z/delta_z) *(1.-2*std::numeric_limits<double>::epsilon()));
       Assert ((z/delta_z) >= 0, ExcInternalError());
       Assert (i+1 < temperatures.size(), ExcInternalError());
 
@@ -202,7 +203,10 @@ namespace aspect
       const double d=1.0+i-z/delta_z;
       Assert ((d>=0) && (d<=1), ExcInternalError());
 
-      return d*temperatures[i]+(1-d)*temperatures[i+1];
+      if (z > delta_z * std::numeric_limits<double>::epsilon())
+        return d*temperatures[i]+(1-d)*temperatures[i+1];
+      else
+        return temperatures[i];
     }
   }
 }

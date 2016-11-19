@@ -134,7 +134,7 @@ namespace aspect
           // calculate density first, we need it for the reaction term
           // temperature dependence of density is 1 - alpha * (T - T(adiabatic))
           double temperature_dependence = 1.0;
-          if (this->include_adiabatic_heating () && this->get_adiabatic_conditions().is_initialized())
+          if (this->include_adiabatic_heating ())
             temperature_dependence -= (in.temperature[i] - this->get_adiabatic_conditions().temperature(in.position[i]))
                                       * thermal_expansivity;
           else
@@ -232,7 +232,7 @@ namespace aspect
 
               // temperature dependence of density is 1 - alpha * (T - T(adiabatic))
               double temperature_dependence = 1.0;
-              if (this->include_adiabatic_heating () && this->get_adiabatic_conditions().is_initialized())
+              if (this->include_adiabatic_heating ())
                 temperature_dependence -= (in.temperature[i] - this->get_adiabatic_conditions().temperature(in.position[i]))
                                           * thermal_expansivity;
               else

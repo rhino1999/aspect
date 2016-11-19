@@ -230,7 +230,6 @@ namespace aspect
           if (this->include_adiabatic_heating ())
             {
               // temperature dependence is 1 - alpha * (T - T(adiabatic))
-              if (this->get_adiabatic_conditions().is_initialized())
                 temperature_dependence -= (in.temperature[i] - this->get_adiabatic_conditions().temperature(in.position[i]))
                                           * thermal_expansivity;
             }
@@ -358,7 +357,6 @@ namespace aspect
               if (this->include_adiabatic_heating ())
                 {
                   // temperature dependence is 1 - alpha * (T - T(adiabatic))
-                  if (this->get_adiabatic_conditions().is_initialized())
                     temperature_dependence -= (in.temperature[i] - this->get_adiabatic_conditions().temperature(in.position[i]))
                                               * thermal_expansivity;
                 }
