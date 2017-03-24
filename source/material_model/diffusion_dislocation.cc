@@ -154,6 +154,8 @@ namespace aspect
 
           // Because the ratios of the diffusion and dislocation strain rates are not known, stress is also unknown
           // We use Newton's method to find the second invariant of the stress tensor.
+          // For that, we define the strain rate residual as a function of the stress tensor second invariant (stress_ii)
+          // stress_ii (i+1) = stress_ii (i) - strain_rate_residual (stress_ii (i)) / strain_rate_residual_derivative (stress_ii (i))
           // Start with the assumption that all strain is accommodated by diffusion creep:
           double stress_ii = edot_ii/prefactor_stress_diffusion;
           double strain_rate_residual = 2*strain_rate_residual_threshold;
@@ -192,7 +194,6 @@ namespace aspect
     {
       for (unsigned int i=0; i < in.temperature.size(); ++i)
         {
-          // const Point<dim> position = in.position[i];
           const double temperature = in.temperature[i];
           const double pressure= in.pressure[i];
           const std::vector<double> composition = in.composition[i];
@@ -206,7 +207,12 @@ namespace aspect
             {
               //not strictly correct if thermal expansivities are different, since we are interpreting
               //these compositions as volume fractions, but the error introduced should not be too bad.
-              const double temperature_factor= (1.0 - thermal_expansivities[j] * (temperature - reference_T));
+              const double T_ref = this->include_adiabatic_heating()
+                                   ?
+                                   this->get_adiabatic_conditions().temperature(in.position[i])
+                                   :
+                                   reference_T;
+              const double temperature_factor= (1.0 - thermal_expansivities[j] * (temperature - T_ref));
               density += volume_fractions[j] * densities[j] * temperature_factor;
             }
 

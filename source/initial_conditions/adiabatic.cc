@@ -36,10 +36,12 @@ namespace aspect
     initial_temperature (const Point<dim> &position) const
     {
       // convert input ages to seconds
-      const double age_top =    (this->convert_output_to_years() ? age_top_boundary_layer * year_in_seconds
-                                 : age_top_boundary_layer);
+
+      const double age_top =    (this->convert_output_to_years() ? age_function->value(position) * year_in_seconds
+                                 : age_function->value(position));
       const double age_bottom = (this->convert_output_to_years() ? age_bottom_boundary_layer * year_in_seconds
                                  : age_bottom_boundary_layer);
+
 
       // First, get the temperature of the adiabatic profile at a representative
       // point at the top and bottom boundary of the model
@@ -90,11 +92,13 @@ namespace aspect
       const double kappa = out.thermal_conductivities[0] / (out.densities[0] * out.specific_heat[0]);
 
       // analytical solution for the thermal boundary layer from half-space cooling model
-      const double surface_cooling_temperature = age_top > 0.0 ?
+      double surface_cooling_temperature = age_top > 0.0 ?
                                                  (T_surface - adiabatic_surface_temperature) *
-                                                 erfc(this->get_geometry_model().depth(position) /
-                                                      (2 * sqrt(kappa * age_top)))
+                                                 erfc(depth / (2 * sqrt(kappa * age_top)))
                                                  : 0.0;
+      //const double max_depth = 200000.0;
+      //surface_cooling_temperature = std::max(surface_cooling_temperature,std::min((T_surface - adiabatic_surface_temperature)*(1.0-depth/max_depth),0.0));
+
       const double bottom_heating_temperature = age_bottom > 0.0 ?
                                                 (T_bottom - adiabatic_bottom_temperature + subadiabaticity)
                                                 * erfc((this->get_geometry_model().maximal_depth()
@@ -174,7 +178,7 @@ namespace aspect
               // the depth variable at zero)
               mid_point = box_geometry_model->get_origin();
               for (unsigned int i=0; i<dim-1; ++i)
-                mid_point(i) += 0.5 * box_geometry_model->get_extents()[i];
+                mid_point(i) += 0.75 * box_geometry_model->get_extents()[i];
             }
           else
             AssertThrow (false,
@@ -204,7 +208,8 @@ namespace aspect
 
       // return sum of the adiabatic profile, the boundary layer temperatures and the initial
       // temperature perturbation.
-      return temperature_profile + surface_cooling_temperature
+      return temperature_profile
+             + (perturbation > 0.0 ? 0.0 : surface_cooling_temperature)
              + (perturbation > 0.0 ? std::max(bottom_heating_temperature + subadiabatic_T,perturbation)
                 : bottom_heating_temperature + subadiabatic_T);
     }
@@ -266,6 +271,11 @@ namespace aspect
             Functions::ParsedFunction<1>::declare_parameters (prm, 1);
           }
           prm.leave_subsection();
+          prm.enter_subsection("Age function");
+          {
+            Functions::ParsedFunction<1>::declare_parameters (prm, 1);
+          }
+          prm.leave_subsection();
         }
         prm.leave_subsection ();
       }
@@ -317,6 +327,24 @@ namespace aspect
 
               prm.leave_subsection();
             }
+
+          prm.enter_subsection("Age function");
+          try
+            {
+              age_function.reset (new Functions::ParsedFunction<dim>(1));
+              age_function->parse_parameters (prm);
+            }
+          catch (...)
+            {
+              std::cerr << "ERROR: FunctionParser failed to parse\n"
+                        << "\t'Initial conditions.Adiabatic.Age function'\n"
+                        << "with expression\n"
+                        << "\t'" << prm.get("Function expression") << "'"
+                        << "More information about the cause of the parse error \n"
+                        << "is shown below.\n";
+              throw;
+            }
+          prm.leave_subsection();
         }
         prm.leave_subsection ();
       }

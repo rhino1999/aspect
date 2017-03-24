@@ -2153,6 +2153,20 @@ namespace aspect
 
               pcout << std::endl;
 
+              pcout << "      Relative nonlinear residuals: " << temperature_residual/initial_temperature_residual;
+
+              for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
+                {
+                  if (initial_composition_residual[c] > 0)
+                    pcout << ", " << composition_residual[c]/initial_composition_residual[c];
+                  else
+                    pcout << ", " << 0.0;
+                }
+
+              pcout << ", " << stokes_residual/initial_stokes_residual;
+
+              pcout << std::endl;
+
               double max = 0.0;
               for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
                 {

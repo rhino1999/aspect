@@ -104,6 +104,11 @@ namespace aspect
          * diffusivity. The function depends only on depth.
          */
         std_cxx11::unique_ptr<Functions::ParsedFunction<1> > function;
+
+        /**
+         * A function object representing the age of the lithosphere.
+         */
+        std_cxx11::unique_ptr<Functions::ParsedFunction<dim> > age_function;
     };
   }
 }
