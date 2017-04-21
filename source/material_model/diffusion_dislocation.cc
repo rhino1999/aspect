@@ -126,7 +126,7 @@ namespace aspect
       // Otherwise, calculate the square-root of the norm of the second invariant of the deviatoric-
       // strain rate (often simplified as epsilondot_ii)
       const double edot_ii = std::max(std::sqrt(std::fabs(second_invariant(deviator(strain_rate)))),
-                                      min_strain_rate * min_strain_rate);
+                                      min_strain_rate);
 
 
       // Find effective viscosities for each of the individual phases

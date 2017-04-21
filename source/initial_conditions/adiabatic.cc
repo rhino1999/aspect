@@ -186,8 +186,7 @@ namespace aspect
                                      "adiabatic."));
         }
 
-      const double perturbation = (mid_point.distance(position) < radius) ? amplitude
-                                  : 0.0;
+      const double perturbation = amplitude * (0.5 + 0.5 * std::tanh((radius - mid_point.distance(position))/40000.0));
 
 
       // add the subadiabaticity
@@ -209,7 +208,7 @@ namespace aspect
       // return sum of the adiabatic profile, the boundary layer temperatures and the initial
       // temperature perturbation.
       return temperature_profile
-             + (perturbation > 0.0 ? 0.0 : surface_cooling_temperature)
+             + /*(perturbation > 1.0 ? 0.0 : */(surface_cooling_temperature)
              + (perturbation > 0.0 ? std::max(bottom_heating_temperature + subadiabatic_T,perturbation)
                 : bottom_heating_temperature + subadiabatic_T);
     }

@@ -366,7 +366,7 @@ namespace aspect
                                                      * this->get_gravity_model().gravity_vector(in.position[i]);
 
               const double phi_0 = 0.05;
-              porosity = std::max(std::min(porosity,0.995),1.e-3);
+              porosity = std::max(std::min(porosity,0.995),1.e-2);
               melt_out->compaction_viscosities[i] = xi_0 * phi_0 / porosity;
               if (in.strain_rate.size())
                 {

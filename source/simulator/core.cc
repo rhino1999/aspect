@@ -2081,6 +2081,8 @@ namespace aspect
         {
           double initial_temperature_residual = 0;
           double initial_stokes_residual      = 0;
+          const double max_stokes_tolerance = parameters.linear_stokes_solver_tolerance;
+          parameters.linear_stokes_solver_tolerance = 1.e-3;
           std::vector<double> initial_composition_residual (parameters.n_compositional_fields,0);
 
           do
@@ -2174,7 +2176,7 @@ namespace aspect
               // output relative residuals
               pcout << "      Relative nonlinear residuals: " << relative_temperature_residual;
               for (unsigned int c=0; c<parameters.n_compositional_fields; ++c)
-                pcout << ", " << initial_composition_residual[c];
+                pcout << ", " << relative_composition_residual[c];
               pcout << ", " << relative_stokes_residual;
               pcout << std::endl;
 
@@ -2202,11 +2204,16 @@ namespace aspect
               pcout << std::endl
                     << std::endl;
 
+              parameters.linear_stokes_solver_tolerance = std::max(max*1.e-2,max_stokes_tolerance);
+
               if (parameters.run_postprocessors_on_nonlinear_iterations)
                 postprocess ();
 
               if (max < parameters.nonlinear_tolerance)
-                break;
+                {
+                  parameters.linear_stokes_solver_tolerance = max_stokes_tolerance;
+                  break;
+                }
 
               ++nonlinear_iteration;
 
