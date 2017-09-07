@@ -111,7 +111,7 @@ namespace aspect
              ?
              scratch.material_model_outputs.thermal_conductivities[q]
              :
-             0.0);
+             0.0000001*scratch.material_model_outputs.thermal_conductivities[q]);
           const double latent_heat_LHS =
             ((advection_field_is_temperature)
              ?
@@ -145,7 +145,7 @@ namespace aspect
                 (time_step * time_step) /
                 (old_time_step * (time_step + old_time_step)))
                :
-               scratch.old_field_values[q])
+                scratch.old_field_values[q])
               *
               (density_c_P + latent_heat_LHS);
 
@@ -154,6 +154,10 @@ namespace aspect
           if (this->get_parameters().free_surface_enabled)
             current_u -= scratch.mesh_velocity_values[q];
 
+          if(!advection_field_is_temperature)
+            current_u = Tensor<1,dim>();
+
+
           const double JxW = scratch.finite_element_values.JxW(q);
 
           // do the actual assembly. note that we only need to loop over the advection
@@ -161,12 +165,7 @@ namespace aspect
           for (unsigned int i=0; i<advection_dofs_per_cell; ++i)
             {
               data.local_rhs(i)
-              += (field_term_for_rhs * scratch.phi_field[i]
-                  + time_step *
-                  scratch.phi_field[i]
-                  * gamma
-                  + scratch.phi_field[i]
-                  * reaction_term)
+              += (field_term_for_rhs * scratch.phi_field[i])
                  *
                  JxW;
 
@@ -176,8 +175,7 @@ namespace aspect
                   += (
                        (time_step * (conductivity + scratch.artificial_viscosity)
                         * (scratch.grad_phi_field[i] * scratch.grad_phi_field[j]))
-                       + ((time_step * (scratch.phi_field[i] * (current_u * scratch.grad_phi_field[j])))
-                          + (bdf2_factor * scratch.phi_field[i] * scratch.phi_field[j])) *
+                       + ((bdf2_factor * scratch.phi_field[i] * scratch.phi_field[j])) *
                        (density_c_P + latent_heat_LHS)
                      )
                      * JxW;

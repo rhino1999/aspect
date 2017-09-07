@@ -1679,11 +1679,13 @@ namespace aspect
         // we do not need distributed_vector any more, use it to temporarily store the update
         distributed_vector.block(block_c) = old_solution.block(block_c);
         distributed_vector.block(block_c) +=  distributed_reaction_vector.block(block_c);
-        old_solution.block(block_c) = distributed_vector.block(block_c);
+        old_solution.block(block_c) = solution.block(block_c);
 
         distributed_vector.block(block_c) = old_old_solution.block(block_c);
         distributed_vector.block(block_c) +=  distributed_reaction_vector.block(block_c);
-        old_old_solution.block(block_c) = distributed_vector.block(block_c);
+        old_old_solution.block(block_c) = solution.block(block_c);
+
+        current_linearization_point.block(block_c) = solution.block(block_c);
       }
 
     const unsigned int block_T = introspection.block_indices.temperature;
@@ -1703,7 +1705,7 @@ namespace aspect
     distributed_vector.block(block_T) +=  distributed_reaction_vector.block(block_T);
     old_old_solution.block(block_T) = distributed_vector.block(block_T);
 
-    current_linearization_point = old_solution;
+    current_linearization_point.block(block_T) = solution.block(block_T);
   }
 
 

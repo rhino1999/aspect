@@ -536,7 +536,8 @@ namespace aspect
         // schemes, but I do not see a way to do it in generality --IR
         AssertThrow( parameters.nonlinear_solver == NonlinearSolver::IMPES ||
                      parameters.nonlinear_solver == NonlinearSolver::iterated_Stokes ||
-                     parameters.nonlinear_solver == NonlinearSolver::Newton_Stokes,
+                     parameters.nonlinear_solver == NonlinearSolver::Newton_Stokes ||
+                     parameters.nonlinear_solver == NonlinearSolver::iterated_IMPES,
                      ExcMessage("The free surface scheme is only implemented for the IMPES, Iterated Stokes solver or the Newton Stokes solver.") );
         // Pressure normalization doesn't really make sense with a free surface, and if we do
         // use it, we can run into problems with geometry_model->depth().
@@ -1789,6 +1790,14 @@ namespace aspect
         case NonlinearSolver::iterated_IMPES:
         {
           solve_iterated_IMPES();
+
+
+
+          do
+            {
+
+                        if(c == introspection.compositional_index_for_name("strain_rate_invariant"))
+                          relative_composition_residual[c] = 0.0;
           break;
         }
 
