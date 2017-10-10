@@ -991,6 +991,12 @@ namespace aspect
                          "at every point and the global maximum is determined. "
                          "Second, the compositional fields to be normalized are "
                          "divided by this maximum.");
+      prm.declare_entry ("List of fields advected with the melt velocity", "",
+                         Patterns::List (Patterns::Integer(0)),
+                         "A list of integers smaller than or equal to the number of "
+                         "compositional fields. All compositional fields in this "
+                         "list will be advected with the melt velocity instead of the "
+                         "solid velocity.");
     }
     prm.leave_subsection ();
 
@@ -1418,6 +1424,7 @@ namespace aspect
 
       AssertThrow (normalized_fields.size() <= n_compositional_fields,
                    ExcMessage("Invalid input parameter file: Too many entries in List of normalized fields"));
+
 
       // global_composition_max_preset.size() and global_composition_min_preset.size() are obtained early than
       // n_compositional_fields. Therefore, we can only check if their sizes are the same here.

@@ -1,0 +1,34 @@
+# 1: Time step number
+# 2: Time (years)
+# 3: Time step size (years)
+# 4: Number of mesh cells
+# 5: Number of Stokes degrees of freedom
+# 6: Number of temperature degrees of freedom
+# 7: Number of degrees of freedom for all compositions
+# 8: Number of nonlinear iterations
+# 9: Iterations for temperature solver
+# 10: Iterations for composition solver 1
+# 11: Iterations for composition solver 2
+# 12: Iterations for composition solver 3
+# 13: Iterations for Stokes solver
+# 14: Velocity iterations in Stokes preconditioner
+# 15: Schur complement iterations in Stokes preconditioner
+# 16: Visualization file name
+# 17: Minimal value for composition porosity
+# 18: Maximal value for composition porosity
+# 19: Global mass for composition porosity
+# 20: Minimal value for composition peridotite
+# 21: Maximal value for composition peridotite
+# 22: Global mass for composition peridotite
+# 23: Minimal value for composition melt_tracker
+# 24: Maximal value for composition melt_tracker
+# 25: Global mass for composition melt_tracker
+# 26: RMS velocity (m/year)
+# 27: Max. velocity (m/year)
+# 28: Minimal temperature (K)
+# 29: Average temperature (K)
+# 30: Maximal temperature (K)
+0 0.000000000000e+00 0.000000000000e+00 256 2467 1089 3267 1 0 0  0  0 8 9 198 output-melt_field_advection/solution/solution-00000 2.00000000e-01 2.00000000e-01 2.00000000e+09 2.77758877e-12 2.00000000e-01 1.25663558e+08  2.77758877e-12 2.00000000e-01 1.25663558e+08 4.30704481e-03 5.89643234e-03 1.60000000e+03 1.60000000e+03 1.60000000e+03 
+1 7.736923820720e+01 7.736923820720e+01 256 2467 1089 3267 2 0 6  7 58 1 2  43 output-melt_field_advection/solution/solution-00001 1.99985645e-01 2.00014354e-01 2.00000000e+09 1.56747630e-11 1.95868544e-01 1.25663558e+08  1.27751722e-10 1.88071593e-01 1.25667167e+08 4.30738921e-03 5.89677391e-03 1.60000000e+03 1.60000000e+03 1.60000000e+03 
+2 1.547307184923e+02 7.736148028515e+01 256 2467 1089 3267 2 0 9 12 27 2 3  66 output-melt_field_advection/solution/solution-00002 1.99971365e-01 2.00028631e-01 2.00000000e+09 3.61255541e-11 1.92199468e-01 1.25663558e+08 -3.79123262e-05 1.80552351e-01 1.25713347e+08 4.30751692e-03 5.89665745e-03 1.60000000e+03 1.60000000e+03 1.60000000e+03 
+3 2.000000000000e+02 4.526928150766e+01 256 2467 1089 3267 2 0 7 11 20 1 2  44 output-melt_field_advection/solution/solution-00003 1.99962980e-01 2.00037015e-01 2.00000000e+09 3.22426773e-11 1.89789389e-01 1.25663558e+08 -7.88020589e-05 1.75082885e-01 1.25784179e+08 4.30756172e-03 5.89676167e-03 1.60000000e+03 1.60000000e+03 1.60000000e+03 

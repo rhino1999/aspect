@@ -1,0 +1,236 @@
+# This is a test for the advection of compositional fields with the melt
+# velocity. It features a box that is closed for the flow of solid material, 
+# but lets melt pass through. Hence, melt moves upwards in the model, 
+# whereas the solid velocity is almost zero. 
+# Two blobs of compositionally different material are placed in the middle of the
+# box at the model start: one is advected with the melt velocity, one with the 
+# solid velocity. The solid blob should remain stationary, whereas the melt blob 
+# should move upwards with the melt velocity.  
+
+set Dimension                              = 2
+set Adiabatic surface temperature          = 1600
+set Maximum time step                      = 1e6
+set Output directory                       = advection
+set Linear solver tolerance                = 1e-8
+set Use years in output instead of seconds = true
+set Max nonlinear iterations               = 10
+
+set Nonlinear solver scheme                = iterated IMPES
+set End time                               = 200
+
+# We fix the temperature at the top and bottom boundaries of
+# the box, and prescribe free-slip boundary conditions on all
+# sides. 
+subsection Model settings
+  set Fixed temperature boundary indicators   = 
+  set Prescribed velocity boundary indicators =
+  set Tangential velocity boundary indicators = left, right, top, bottom
+  
+  # In addition, we now also specify in the model settings that we want to
+  # run a model with melt transport. 
+  set Include melt transport                  = true
+end 
+
+##################### Settings for melt transport ########################
+
+subsection Melt settings
+  set Melt transport threshold                = 0.0
+end
+
+subsection Compositional fields
+  set Number of fields = 3
+  set Names of fields = porosity, peridotite, melt_tracker
+  set List of fields advected with the melt velocity = 2
+end
+
+subsection Discretization
+  set Stokes velocity polynomial degree    = 2
+  set Composition polynomial degree        = 2
+end
+
+subsection Boundary fluid pressure model
+  set Plugin name = density
+  subsection Density
+    # `solid density' prescribes the gradient of the fluid pressure as solid
+    # density times gravity (which is the lithostatic pressure) and leads to
+    # approximately the same pressure in the melt as in the solid, so that
+    # fluid is only flowing in or out due to differences in dynamic pressure.
+    set Density formulation = solid density
+  end
+
+end
+
+##################### Initial conditions ########################
+
+subsection Initial temperature model
+  set List of model names = function
+  subsection Function
+    set Function constants        = r=350000, amplitude=50
+    set Function expression       = 1600
+  end
+end
+
+# Now that our model uses compositional fields, we also need initial
+# conditions for the composition. 
+# We use the function plugin to set both fields to zero at the beginning
+# of the model run. 
+subsection Initial composition model
+  set Model name = function
+  subsection Function
+    set Variable names      = x,y
+    set Function constants  = pi=3.1415926,x0=5e4,y0=5e4,c=10000
+    set Function expression = 0.2; 0.2 * exp(-((x-x0)*(x-x0)+(y-y0)*(y-y0))/(2*c*c)); 0.2 * exp(-((x-x0)*(x-x0)+(y-y0)*(y-y0))/(2*c*c))
+  end
+end
+
+##################### Boundary conditions ########################
+
+subsection Boundary temperature model
+  set Model name = initial temperature
+
+  subsection Initial temperature
+    set Minimal temperature = 1600
+    set Maximal temperature = 1600
+  end
+end
+ 
+subsection Boundary composition model
+  set Model name = initial composition
+end
+
+##################### Model geometry ########################
+
+# The model geometry is a box with an aspect ratio of 3, 
+# extending to the base of the mantle in vertical direction.
+subsection Geometry model
+  set Model name = box
+
+  subsection Box
+    set X extent = 1e5
+    set Y extent = 1e5
+  end
+end
+
+################ Gravity and material properties ##################
+
+# The model has a constant gravity. 
+subsection Gravity model
+  set Model name = vertical
+
+  subsection Vertical
+    set Magnitude = 10.0
+  end
+end
+
+# We use the melt global material model, which is one of the
+# material models that works with melt transport, as it also
+# specifies the material properties needed for melt migration, 
+# such as the permeability, the melt density and the melt 
+# viscosity.
+# In addition to the material properties for the solid rock, 
+# we also have to specify properties for the melt.
+subsection Material model
+
+  set Model name = melt global 
+  subsection Melt global
+    
+    # First we describe the parameters for the solid, in the same way
+    # we did in the model without melt transport
+    set Thermal conductivity              = 4.7
+    set Reference solid density           = 3500
+    set Thermal expansion coefficient     = 0.0
+    set Reference shear viscosity         = 5e21
+    set Thermal viscosity exponent        = 7
+    set Reference temperature             = 1600
+    set Solid compressibility             = 0.0
+
+    set Read melt fraction from file      = true
+    set Pressure unit in melt fraction file = GPa
+    set Include melting and freezing      = false
+    
+    # The melt usually has a different (lower) density than the solid.
+    set Reference melt density            = 3000
+    set Reference permeability            = 1e-8
+    set Reference bulk viscosity          = 1e19
+    set Exponential melt weakening factor = 10
+    set Thermal bulk viscosity exponent   = 7
+    set Melt compressibility              = 0.0
+    set Melt bulk modulus derivative      = 0.0
+    set Reference melt viscosity          = 1
+    set Depletion density change          = 0.0
+    set Depletion solidus change          = 0
+  end
+end
+
+##################### Mesh refinement #########################
+
+# For the model with melt migration, we use adaptive refinement. 
+# We make use of two different refinement criteria: we set a minimum of 4 global
+# refinements everywhere in the model (which is the same resolution as for the 
+# model without melt), and we refine in regions where melt is present, to be 
+# precise, everywhere where the porosity is bigger than 1e-4. 
+# We adapt the mesh every 5 time steps. 
+subsection Mesh refinement
+  set Coarsening fraction                      = 0.05
+  set Refinement fraction                      = 0.8
+
+  set Initial adaptive refinement              = 0
+  set Initial global refinement                = 4
+  set Strategy                                 = composition threshold, minimum refinement function
+  set Time steps between mesh refinement       = 0
+
+  # minimum of 4 global refinements
+  subsection Minimum refinement function
+    set Coordinate system   = depth
+    set Function expression = 4
+    set Variable names      = depth,phi
+  end
+
+  # refine where the porosity is bigger than 1e-4
+  subsection Composition threshold
+    set Compositional field thresholds = 1e-4,1.0,0.1
+  end
+end
+
+# As the model is compressible and has an adiabatic temperature profile, we include 
+# adiabatic heating in the list of heating models. 
+# To make this model as simple as possible, we do not include shear heating (although
+# usually, adiabatic heating and shear heating should always be used together).  
+subsection Heating model
+  set List of model names = #adiabatic heating
+end 
+
+##################### Postprocessing ########################
+
+# In addition to the visualization output, we select a number 
+# of postprocessors that allow us to compute some statistics
+# about the output (to see how much the model without and the
+# model with melt migration differ), and in particular we use
+# the "depth average" postprocessor that will allow us to plot
+# depth-averaged model quantities over time. 
+subsection Postprocess
+
+  set List of postprocessors = visualization, composition statistics, velocity statistics, temperature statistics
+
+  # For the model with melt migration, also add a visualization
+  # postprocessor that computes the material properties relevant
+  # to migration (permeability, viscosity of the melt, etc.).
+
+  subsection Visualization
+    set List of output variables      = material properties, nonadiabatic temperature, strain rate, melt fraction, melt material properties
+
+    subsection Material properties
+      set List of material properties = density, viscosity, thermal expansivity
+    end
+
+    subsection Melt material properties
+      set List of properties = fluid density, permeability, fluid viscosity, compaction viscosity
+    end
+
+    set Number of grouped files       = 0
+    set Output format                 = vtu
+    set Time between graphical output = 0
+    set Interpolate output            = true
+  end
+end
+

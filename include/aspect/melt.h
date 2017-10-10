@@ -197,6 +197,16 @@ namespace aspect
                                               internal::Assembly::CopyData::AdvectionSystem<dim> &data) const;
 
         /**
+         * Compute the integrals for the Advection system matrix and right hand side in
+         * the case of a compositional field that moves with the melt on a single cell.
+         */
+        void
+        local_assemble_advection_system_melt_property (const typename Simulator<dim>::AdvectionField      &advection_field,
+                                                       const double                                        artificial_viscosity,
+                                                       internal::Assembly::Scratch::AdvectionSystem<dim>  &scratch,
+                                                       internal::Assembly::CopyData::AdvectionSystem<dim> &data) const;
+
+        /**
          * Compute the residual of the advection system on a single cell in
          * the case of melt migration.
          */
@@ -334,6 +344,11 @@ namespace aspect
       bool is_porosity (const typename Simulator<dim>::AdvectionField &advection_field) const;
 
       /**
+       * Return whether this object is advected with the melt velocity.
+       */
+      bool is_advected_with_melt (const typename Simulator<dim>::AdvectionField &advection_field) const;
+
+      /**
        * The porosity limit for melt migration. For smaller porosities, the equations
        * reduce to the Stokes equations and neglect melt transport. In practice, this
        * means that all terms in the assembly related to the migration of melt are set
@@ -353,6 +368,12 @@ namespace aspect
        * without melt migration).
        */
       bool heat_advection_by_melt;
+
+      /**
+       * A list that gives the compositional fields that should be advected
+       * with the melt velocity instead of the solid velocity.
+       */
+      std::vector<unsigned int> fields_advected_with_melt;
 
       /**
        * Store a pointer to the fluid pressure boundary plugin, so that the

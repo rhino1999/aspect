@@ -490,8 +490,10 @@ namespace aspect
                          "reasonable values."));
 
       std::vector<Tensor<1,dim> > fluid_velocity_values(n_q_points);
+      std::vector<double> fluid_velocity_divergences(n_q_points);
       const FEValuesExtractors::Vector ex_u_f = introspection.variable("fluid velocity").extractor_vector();
       scratch.finite_element_values[ex_u_f].get_function_values (this->get_solution(),fluid_velocity_values);
+      scratch.finite_element_values[ex_u_f].get_function_divergences (this->get_solution(),fluid_velocity_divergences);
 
       for (unsigned int q=0; q<n_q_points; ++q)
         {
@@ -580,7 +582,7 @@ namespace aspect
           if (this->get_parameters().free_surface_enabled)
             current_u -= scratch.mesh_velocity_values[q];
 
-          const double melt_transport_LHS =
+          double melt_transport_LHS =
             (this->get_melt_handler().is_porosity(advection_field)
              ?
              scratch.current_velocity_divergences[q]
@@ -595,11 +597,20 @@ namespace aspect
              :
              0.0);
 
+          // for advective transport of heat by melt, and compositional fields advected by melt,
+          // we have to consider melt velocities
+          const Tensor<1,dim> current_u_f = fluid_velocity_values[q];
+
+          // advect melt fields with the melt velocity
+          if(this->get_melt_handler().is_advected_with_melt(advection_field) && porosity > this->get_melt_handler().melt_transport_threshold)
+            {
+              melt_transport_LHS = fluid_velocity_divergences[q];
+              current_u = current_u_f;
+            }
+
           const double factor = (use_bdf2_scheme)? ((2*time_step + old_time_step) /
                                                     (time_step + old_time_step)) : 1.0;
 
-          // for advective transport of heat by melt, we have to consider melt velocities
-          const Tensor<1,dim> current_u_f = fluid_velocity_values[q];
           double density_c_P_solid = density_c_P;
           double density_c_P_melt = 0.0;
 
@@ -1159,6 +1170,21 @@ namespace aspect
 
 
   template <int dim>
+  bool
+  MeltHandler<dim>::
+  is_advected_with_melt(const typename Simulator<dim>::AdvectionField &advection_field) const
+  {
+    if (advection_field.field_type != Simulator<dim>::AdvectionField::compositional_field)
+      return false;
+    else
+      {
+        std::vector<unsigned int> v = this->get_melt_handler().fields_advected_with_melt;
+        return ((std::find(v.begin(), v.end(), advection_field.compositional_variable) != v.end()));
+      }
+  }
+
+
+  template <int dim>
   void
   MeltHandler<dim>::
   edit_finite_element_variables(const Parameters<dim> &parameters,
@@ -1223,6 +1249,17 @@ namespace aspect
     }
     prm.leave_subsection();
 
+    prm.enter_subsection ("Compositional fields");
+    {
+      prm.declare_entry ("List of fields advected with the melt velocity", "",
+                         Patterns::List (Patterns::Integer(0)),
+                         "A list of integers smaller than or equal to the number of "
+                         "compositional fields. All compositional fields in this "
+                         "list will be advected with the melt velocity instead of the "
+                         "solid velocity.");
+    }
+    prm.leave_subsection ();
+
     BoundaryFluidPressure::declare_parameters<dim> (prm);
   }
 
@@ -1251,6 +1288,19 @@ namespace aspect
     {
       melt_transport_threshold = prm.get_double("Melt transport threshold");
       heat_advection_by_melt = prm.get_bool("Heat advection by melt");
+    }
+    prm.leave_subsection();
+
+    prm.enter_subsection ("Compositional fields");
+    {
+      const std::vector<int> n_melt_fields = Utilities::string_to_int
+                                             (Utilities::split_string_list(prm.get ("List of fields advected with the melt velocity")));
+      fields_advected_with_melt = std::vector<unsigned int> (n_melt_fields.begin(),
+                                                             n_melt_fields.end());
+
+      const unsigned int n_compositional_fields = prm.get_integer ("Number of fields");
+      AssertThrow (fields_advected_with_melt.size() <= n_compositional_fields,
+                   ExcMessage("Invalid input parameter file: Too many entries in List of fields advected with the melt velocity"));
     }
     prm.leave_subsection();
 
