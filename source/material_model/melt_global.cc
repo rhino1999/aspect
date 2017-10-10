@@ -42,6 +42,8 @@ namespace aspect
         public:
           MeltFractionLookup(const std::string &filename,
                              const bool interpol,
+                             const std::string &p_unit,
+                             const std::string &T_unit,
                              const MPI_Comm &comm)
           {
             /* Initializing variables */
@@ -62,7 +64,34 @@ namespace aspect
             getline(in, temp); // eat next line
             getline(in, temp); // eat next line
 
+            // we may have to convert temperature and pressure to SI units
+            double pressure_scaling_factor = numbers::signaling_nan<double>();
+            double temperature_offset = numbers::signaling_nan<double>();
+
+            if (p_unit == "GPa")
+              pressure_scaling_factor = 1.e9;
+            else if (p_unit == "Pa")
+              pressure_scaling_factor = 1.0;
+            else if (p_unit == "bar")
+              pressure_scaling_factor = 1.e5;
+            else if (p_unit == "kbar")
+              pressure_scaling_factor = 1.e8;
+            else
+              AssertThrow (false,
+                           ExcMessage ("The value <" + p_unit + "> for a pressure unit "
+                                       "is not one of the valid values."));
+
+            if (T_unit == "Kelvin")
+              temperature_offset = 0.0;
+            else if (p_unit == "Celsius")
+              temperature_offset = -273.15;
+            else
+              AssertThrow (false,
+                           ExcMessage ("The value <" + T_unit + "> for a temperature unit "
+                                       "is not one of the valid values."));
+
             in >> min_temp;
+            min_temp += temperature_offset;
             getline(in, temp);
             in >> delta_temp;
             getline(in, temp);
@@ -70,10 +99,10 @@ namespace aspect
             getline(in, temp);
             getline(in, temp);
             in >> min_press;
-            min_press *= 1e9;  // conversion from [GPa] to [Pa]
+            min_press *= pressure_scaling_factor;  // conversion from [GPa] to [Pa]
             getline(in, temp);
             in >> delta_press;
-            delta_press *= 1e9; // conversion from [GPa] to [Pa]
+            delta_press *= pressure_scaling_factor; // conversion from [GPa] to [Pa]
             getline(in, temp);
             in >> numpress;
             getline(in, temp);
@@ -244,7 +273,11 @@ namespace aspect
     MeltGlobal<dim>::
     initialize()
     {
-      melt_fraction_lookup.reset(new internal::MeltFractionLookup(data_directory+melt_fraction_file_name,interpolation,this->get_mpi_communicator()));
+      melt_fraction_lookup.reset(new internal::MeltFractionLookup(data_directory+melt_fraction_file_name,
+                                                                  interpolation,
+                                                                  pressure_unit,
+                                                                  temperature_unit,
+                                                                  this->get_mpi_communicator()));
     }
 
 
@@ -624,6 +657,24 @@ namespace aspect
                              Patterns::Bool (),
                              "Whether to read the melt fraction from a data file (if true) "
                              "or to use a simple linearized, analytical melting model.");
+          prm.declare_entry ("Pressure unit in melt fraction file", "Pa",
+                             Patterns::Selection("Pa|GPa|bar|kbar"),
+                             "What unit the pressure should have in the data file that "
+                             "determines the melt fraction."
+                             "\n\n"
+                             "Possible choices: Pa|GPa|bar|kbar"
+                             "\n\n"
+                             "This option is ignored if no such data file is used in the "
+                             "computation..");
+          prm.declare_entry ("Temperature unit in melt fraction file", "Kelvin",
+                             Patterns::Selection("Kelvin|Celsius"),
+                             "What unit the temperature should have in the data file that "
+                             "determines the melt fraction."
+                             "\n\n"
+                             "Possible choices: Kelvin|Celsius"
+                             "\n\n"
+                             "This option is ignored if no such data file is used in the "
+                             "computation..");
         }
         prm.leave_subsection();
       }
@@ -668,7 +719,8 @@ namespace aspect
           if (thermal_viscosity_exponent!=0.0 && reference_T == 0.0)
             AssertThrow(false, ExcMessage("Error: Material model Melt simple with Thermal viscosity exponent can not have reference_T=0."));
 
-
+          pressure_unit                     = prm.get ("Pressure unit in melt fraction file");
+          temperature_unit                  = prm.get ("Temperature unit in melt fraction file");
         }
         prm.leave_subsection();
       }

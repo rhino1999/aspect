@@ -157,6 +157,12 @@ namespace aspect
         bool interpolation;
 
         /**
+         * Allow for different units in the data files.
+         */
+        std::string pressure_unit;
+        std::string temperature_unit;
+
+        /**
          * List of pointers to objects that read and process data we get from
          * Perplex files.
          */
