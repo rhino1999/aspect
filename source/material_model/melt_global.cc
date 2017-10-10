@@ -21,15 +21,198 @@
 
 #include <aspect/material_model/melt_global.h>
 #include <aspect/adiabatic_conditions/interface.h>
+#include <aspect/utilities.h>
 
 #include <deal.II/base/parameter_handler.h>
 #include <deal.II/numerics/fe_field_function.h>
+#include <deal.II/base/table.h>
+#include <fstream>
+#include <iostream>
 
 
 namespace aspect
 {
   namespace MaterialModel
   {
+    namespace internal
+    {
+
+      class MeltFractionLookup
+      {
+        public:
+          MeltFractionLookup(const std::string &filename,
+                             const bool interpol,
+                             const MPI_Comm &comm)
+          {
+            /* Initializing variables */
+            interpolation = interpol;
+            delta_press=-1.0;
+            min_press=-1.0;
+            delta_temp=-1.0;
+            min_temp=-1.0;
+            numtemp=0;
+            numpress=0;
+
+            std::string temp;
+            // Read data from disk and distribute among processes
+            std::istringstream in(Utilities::read_and_distribute_file_content(filename, comm));
+
+            getline(in, temp); // eat first line
+            getline(in, temp); // eat next line
+            getline(in, temp); // eat next line
+            getline(in, temp); // eat next line
+
+            in >> min_temp;
+            getline(in, temp);
+            in >> delta_temp;
+            getline(in, temp);
+            in >> numtemp;
+            getline(in, temp);
+            getline(in, temp);
+            in >> min_press;
+            min_press *= 1e9;  // conversion from [GPa] to [Pa]
+            getline(in, temp);
+            in >> delta_press;
+            delta_press *= 1e9; // conversion from [GPa] to [Pa]
+            getline(in, temp);
+            in >> numpress;
+            getline(in, temp);
+            getline(in, temp);
+            getline(in, temp);
+
+            Assert(min_temp >= 0.0, ExcMessage("Read in of Material header failed (mintemp)."));
+            Assert(delta_temp > 0, ExcMessage("Read in of Material header failed (delta_temp)."));
+            Assert(numtemp > 0, ExcMessage("Read in of Material header failed (numtemp)."));
+            Assert(min_press >= 0, ExcMessage("Read in of Material header failed (min_press)."));
+            Assert(delta_press > 0, ExcMessage("Read in of Material header failed (delta_press)."));
+            Assert(numpress > 0, ExcMessage("Read in of Material header failed (numpress)."));
+
+
+            max_temp = min_temp + (numtemp-1) * delta_temp;
+            max_press = min_press + (numpress-1) * delta_press;
+
+            peridotite_melt_fractions.reinit(numtemp,numpress);
+            basalt_melt_fractions.reinit(numtemp,numpress);
+
+            unsigned int i = 0;
+            while (!in.eof())
+              {
+                double temp1,temp2;
+                double peridotite,basalt;
+                in >> temp1 >> temp2;
+                in >> peridotite;
+                if (in.fail())
+                  {
+                    in.clear();
+                    peridotite = peridotite_melt_fractions[(i-1)%numtemp][(i-1)/numtemp];
+                  }
+                in >> basalt;
+                if (in.fail())
+                  {
+                    in.clear();
+                    basalt = basalt_melt_fractions[(i-1)%numtemp][(i-1)/numtemp];
+                  }
+
+                getline(in, temp);
+                if (in.eof())
+                  break;
+
+                peridotite_melt_fractions[i%numtemp][i/numtemp]=peridotite;
+                basalt_melt_fractions[i%numtemp][i/numtemp]=basalt;
+
+                i++;
+              }
+            Assert(i==numtemp*numpress, ExcMessage("Melt fraction table size not consistent with header."));
+
+          }
+
+
+          double
+          peridotite_melt_fraction(double temperature,
+                                   double pressure) const
+          {
+            return value(temperature,pressure,peridotite_melt_fractions,interpolation);
+          }
+
+
+          double
+          basalt_melt_fraction(double temperature,
+                               double pressure) const
+          {
+            return value(temperature,pressure,basalt_melt_fractions,interpolation);
+          }
+
+
+          double
+          value (const double temperature,
+                 const double pressure,
+                 const dealii::Table<2,
+                 double> &values,
+                 bool interpol) const
+          {
+            const double nT = get_nT(temperature);
+            const unsigned int inT = static_cast<unsigned int>(nT);
+
+            const double np = get_np(pressure);
+            const unsigned int inp = static_cast<unsigned int>(np);
+
+            Assert(inT<values.n_rows(), ExcMessage("Attempting to look up a temperature value with index greater than the number of rows."));
+            Assert(inp<values.n_cols(), ExcMessage("Attempting to look up a pressure value with index greater than the number of columns."));
+
+            if (!interpol)
+              return values[inT][inp];
+            else
+              {
+                // compute the coordinates of this point in the
+                // reference cell between the data points
+                const double xi = nT-inT;
+                const double eta = np-inp;
+
+                Assert ((0 <= xi) && (xi <= 1), ExcInternalError());
+                Assert ((0 <= eta) && (eta <= 1), ExcInternalError());
+
+                // use these coordinates for a bilinear interpolation
+                return ((1-xi)*(1-eta)*values[inT][inp] +
+                        xi    *(1-eta)*values[inT+1][inp] +
+                        (1-xi)*eta    *values[inT][inp+1] +
+                        xi    *eta    *values[inT+1][inp+1]);
+              }
+          }
+
+        private:
+          double get_nT(double temperature) const
+          {
+            temperature=std::max(min_temp, temperature);
+            temperature=std::min(temperature, max_temp-delta_temp);
+            Assert(temperature>=min_temp, ExcMessage("ASPECT found a temperature less than min_T."));
+            Assert(temperature<=max_temp, ExcMessage("ASPECT found a temperature greater than max_T."));
+            return (temperature-min_temp)/delta_temp;
+          }
+
+          double get_np(double pressure) const
+          {
+            pressure=std::max(min_press, pressure);
+            pressure=std::min(pressure, max_press-delta_press);
+            Assert(pressure>=min_press, ExcMessage("ASPECT found a pressure less than min_p."));
+            Assert(pressure<=max_press, ExcMessage("ASPECT found a pressure greater than max_p."));
+            return (pressure-min_press)/delta_press;
+          }
+
+          dealii::Table<2,double> peridotite_melt_fractions;
+          dealii::Table<2,double> basalt_melt_fractions;
+
+          double delta_press;
+          double min_press;
+          double max_press;
+          double delta_temp;
+          double min_temp;
+          double max_temp;
+          unsigned int numtemp;
+          unsigned int numpress;
+          bool interpolation;
+      };
+    }
+
     template <int dim>
     double
     MeltGlobal<dim>::
@@ -54,6 +237,16 @@ namespace aspect
     {
       return false;
     }
+
+
+    template <int dim>
+    void
+    MeltGlobal<dim>::
+    initialize()
+    {
+      melt_fraction_lookup.reset(new internal::MeltFractionLookup(data_directory+melt_fraction_file_name,interpolation,this->get_mpi_communicator()));
+    }
+
 
     template <int dim>
     double
@@ -85,19 +278,33 @@ namespace aspect
     melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
                     std::vector<double> &melt_fractions) const
     {
-      double depletion = 0.0;
-
-      for (unsigned int q=0; q<in.temperature.size(); ++q)
+      if (read_melt_from_file)
         {
-          if (this->include_melt_transport())
+          const unsigned int peridotite_idx = this->introspection().compositional_index_for_name("peridotite");
+          for (unsigned int q=0; q<in.temperature.size(); ++q)
             {
-              const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
-              const unsigned int peridotite_idx = this->introspection().compositional_index_for_name("peridotite");
-              depletion = in.composition[q][peridotite_idx] - in.composition[q][porosity_idx];
+              const double peridotite_melt = melt_fraction_lookup->peridotite_melt_fraction(in.temperature[q],in.pressure[q]);
+              const double basalt_melt = melt_fraction_lookup->basalt_melt_fraction(in.temperature[q],in.pressure[q]);
+              melt_fractions[q] = in.composition[q][peridotite_idx] * peridotite_melt
+                                  +(1.0 - in.composition[q][peridotite_idx]) * basalt_melt;
             }
-          melt_fractions[q] = this->melt_fraction(in.temperature[q],
-                                                  std::max(0.0, in.pressure[q]),
-                                                  depletion);
+        }
+      else
+        {
+          double depletion = 0.0;
+
+          for (unsigned int q=0; q<in.temperature.size(); ++q)
+            {
+              if (this->include_melt_transport())
+                {
+                  const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
+                  const unsigned int peridotite_idx = this->introspection().compositional_index_for_name("peridotite");
+                  depletion = in.composition[q][peridotite_idx] - in.composition[q][porosity_idx];
+                }
+              melt_fractions[q] = this->melt_fraction(in.temperature[q],
+                                                      std::max(0.0, in.pressure[q]),
+                                                      depletion);
+            }
         }
       return;
     }
@@ -389,6 +596,34 @@ namespace aspect
                              "Whether to include melting and freezing (according to a simplified "
                              "linear melting approximation in the model (if true), or not (if "
                              "false).");
+          prm.declare_entry ("Data directory", "$ASPECT_SOURCE_DIR/data/melt-fraction-model/melt_global/",
+                             Patterns::DirectoryName (),
+                             "The path to the model data. The path may also include the special "
+                             "text '$ASPECT_SOURCE_DIR' which will be interpreted as the path "
+                             "in which the ASPECT source files were located when ASPECT was "
+                             "compiled. This interpretation allows, for example, to reference "
+                             "files located in the `data/' subdirectory of ASPECT. ");
+          prm.declare_entry ("Melt fraction file name", "peridotite_melt_contour_output.txt",
+                             Patterns::List (Patterns::Anything()),
+                             "The file names of the melt fraction data (melt fraction "
+                             "data is assumed to be in order with the ordering "
+                             "of the compositional fields). Note that there are "
+                             "three options on how many files need to be listed "
+                             "here: 1. If only one file is provided, it is used "
+                             "for the whole model domain, and compositional fields "
+                             "are ignored. 2. If there is one more file name than the "
+                             "number of compositional fields, then the first file is "
+                             "assumed to define a `background composition' that is "
+                             "modified by the compositional fields. If there are "
+                             "exactly as many files as compositional fields, the fields are "
+                             "assumed to represent the fractions of different materials "
+                             "and the average property is computed as a sum of "
+                             "the value of the compositional field times the "
+                             "material property of that field.");
+          prm.declare_entry ("Read melt fraction from file", "false",
+                             Patterns::Bool (),
+                             "Whether to read the melt fraction from a data file (if true) "
+                             "or to use a simple linearized, analytical melting model.");
         }
         prm.leave_subsection();
       }
@@ -425,6 +660,10 @@ namespace aspect
           compressibility                   = prm.get_double ("Solid compressibility");
           melt_compressibility              = prm.get_double ("Melt compressibility");
           include_melting_and_freezing      = prm.get_bool ("Include melting and freezing");
+
+          data_directory                    = Utilities::expand_ASPECT_SOURCE_DIR(prm.get ("Data directory"));
+          melt_fraction_file_name           = prm.get ("Melt fraction file name");
+          read_melt_from_file               = prm.get_bool ("Read melt fraction from file");
 
           if (thermal_viscosity_exponent!=0.0 && reference_T == 0.0)
             AssertThrow(false, ExcMessage("Error: Material model Melt simple with Thermal viscosity exponent can not have reference_T=0."));

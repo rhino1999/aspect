@@ -32,6 +32,11 @@ namespace aspect
   {
     using namespace dealii;
 
+    namespace internal
+    {
+      class MeltFractionLookup;
+    }
+
     /**
      * A material model that implements a simple formulation of the
      * material parameters required for the modelling of melt transport
@@ -47,6 +52,14 @@ namespace aspect
     class MeltGlobal : public MaterialModel::MeltInterface<dim>, public ::aspect::SimulatorAccess<dim>, public MaterialModel::MeltFractionModel<dim>
     {
       public:
+        /**
+         * Initialization function. Loads the melt fraction data and sets up
+         * pointers.
+         */
+        virtual
+        void
+        initialize ();
+
         /**
          * Return whether the model is compressible or not.  Incompressibility
          * does not necessarily imply that the density is constant; rather, it
@@ -134,6 +147,20 @@ namespace aspect
 
         // entropy change upon melting
         double peridotite_melting_entropy_change;
+
+        /**
+         * Information about the location of data files.
+         */
+        bool read_melt_from_file;
+        std::string data_directory;
+        std::string melt_fraction_file_name;
+        bool interpolation;
+
+        /**
+         * List of pointers to objects that read and process data we get from
+         * Perplex files.
+         */
+        std_cxx11::shared_ptr<internal::MeltFractionLookup> melt_fraction_lookup;
 
         virtual
         double
