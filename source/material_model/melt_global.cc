@@ -313,13 +313,27 @@ namespace aspect
     {
       if (read_melt_from_file)
         {
-          const unsigned int peridotite_idx = this->introspection().compositional_index_for_name("peridotite");
+          // if we read the melt from a file, the melt fraction depends on the path we are on:
+          // the solid-->melt phase transition uses a different diagram than the melt-->solid
+          // phase trasition
+          // As we do not know if material is melting or freezing at the moment, we will here
+          // only output the melt fraction on the solid-->melt side of the path
           for (unsigned int q=0; q<in.temperature.size(); ++q)
             {
-              const double peridotite_melt = melt_fraction_lookup->peridotite_melt_fraction(in.temperature[q],in.pressure[q]);
-              const double basalt_melt = melt_fraction_lookup->basalt_melt_fraction(in.temperature[q],in.pressure[q]);
-              melt_fractions[q] = in.composition[q][peridotite_idx] * peridotite_melt
-                                  +(1.0 - in.composition[q][peridotite_idx]) * basalt_melt;
+              double peridotite_melt = melt_fraction_lookup->peridotite_melt_fraction(in.temperature[q],in.pressure[q]);
+
+              if (this->introspection().compositional_name_exists("peridotite"))
+                {
+                  const double basalt_melt = melt_fraction_lookup->basalt_melt_fraction(in.temperature[q],in.pressure[q]);
+                  const unsigned int peridotite_idx = this->introspection().compositional_index_for_name("peridotite");
+                  const double peridotite_fraction = (1.0 - std::max(-in.composition[q][peridotite_idx],0.0));
+                  const double basalt_fraction = std::min(std::max(-in.composition[q][peridotite_idx],0.0),1.0);
+
+                  melt_fractions[q] = peridotite_fraction * peridotite_melt
+                                      + basalt_fraction * basalt_melt;
+                }
+              else
+                melt_fractions[q] = peridotite_melt;
             }
         }
       else
@@ -349,8 +363,26 @@ namespace aspect
     evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const
     {
       std::vector<double> old_porosity(in.position.size());
+      std::vector<double> old_depletion(in.position.size());
+      std::vector<double> old_melt_composition(in.position.size());
 
       ReactionRateOutputs<dim> *reaction_rate_out = out.template get_additional_output<ReactionRateOutputs<dim> >();
+
+      // make sure the compositional fields we want to use exist
+      if (this->include_melt_transport())
+        AssertThrow(this->introspection().compositional_name_exists("porosity"),
+                    ExcMessage("Material model Melt simple with melt transport only "
+                               "works if there is a compositional field called porosity."));
+
+      if (this->include_melt_transport() && include_melting_and_freezing)
+        AssertThrow(this->introspection().compositional_name_exists("peridotite"),
+                    ExcMessage("Material model Melt global only works if there is a "
+                               "compositional field called peridotite."));
+
+      if (this->include_melt_transport() && include_melting_and_freezing && read_melt_from_file)
+        AssertThrow(this->introspection().compositional_name_exists("crystallized_fraction"),
+                    ExcMessage("Reading in melt fractions from a file only works if there "
+                               "is a field called crystallized_fraction."));
 
       // we want to get the porosity field from the old solution here,
       // because we need a field that is not updated in the nonlinear iterations
@@ -361,21 +393,36 @@ namespace aspect
           Functions::FEFieldFunction<dim, DoFHandler<dim>, LinearAlgebra::BlockVector>
           fe_value(this->get_dof_handler(), this->get_old_solution(), this->get_mapping());
 
-          AssertThrow(this->introspection().compositional_name_exists("porosity"),
-                      ExcMessage("Material model Melt simple with melt transport only "
-                                 "works if there is a compositional field called porosity."));
           const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
 
           fe_value.set_active_cell(in.current_cell);
           fe_value.value_list(in.position,
                               old_porosity,
                               this->introspection().component_indices.compositional_fields[porosity_idx]);
+
+          if(read_melt_from_file && include_melting_and_freezing)
+            {
+              const unsigned int peridotite_idx = this->introspection().compositional_index_for_name("peridotite");
+              const unsigned int crystallization_idx = this->introspection().compositional_index_for_name("crystallized_fraction");
+              fe_value.value_list(in.position,
+                                  old_depletion,
+                                  this->introspection().component_indices.compositional_fields[peridotite_idx]);
+              fe_value.value_list(in.position,
+                                  old_melt_composition,
+                                  this->introspection().component_indices.compositional_fields[crystallization_idx]);
+            }
         }
       else if (this->get_parameters().use_operator_splitting)
         for (unsigned int i=0; i<in.position.size(); ++i)
           {
             const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
             old_porosity[i] = in.composition[i][porosity_idx];
+
+            if(read_melt_from_file)
+              {
+                old_depletion[i] = in.composition[i][this->introspection().compositional_index_for_name("peridotite")];
+                old_melt_composition[i] = in.composition[i][this->introspection().compositional_index_for_name("crystallized_fraction")];
+              }
           }
 
       for (unsigned int i=0; i<in.position.size(); ++i)
@@ -398,28 +445,52 @@ namespace aspect
           out.densities[i] = (reference_rho_s + delta_rho) * temperature_dependence
                              * std::exp(compressibility * (in.pressure[i] - this->get_surface_pressure()));
 
+          // now compute melting and crystallization
           if (this->include_melt_transport() && include_melting_and_freezing)
             {
-              AssertThrow(this->introspection().compositional_name_exists("peridotite"),
-                          ExcMessage("Material model Melt simple only works if there is a "
-                                     "compositional field called peridotite."));
-              AssertThrow(this->introspection().compositional_name_exists("porosity"),
-                          ExcMessage("Material model Melt simple with melt transport only "
-                                     "works if there is a compositional field called porosity."));
               const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
               const unsigned int peridotite_idx = this->introspection().compositional_index_for_name("peridotite");
+              const unsigned int crystallization_idx = (read_melt_from_file
+                                                        ?
+                                                        this->introspection().compositional_index_for_name("crystallized_fraction")
+                                                        :
+                                                        numbers::invalid_unsigned_int);
+              double eq_melt_composition = 0.0;
 
               // calculate the melting rate as difference between the equilibrium melt fraction
               // and the solution of the previous time step
               // solidus is lowered by previous melting events (fractional melting)
-              const double eq_melt_fraction = melt_fraction(in.temperature[i],
-                                                            this->get_adiabatic_conditions().pressure(in.position[i]),
-                                                            in.composition[i][peridotite_idx] - in.composition[i][porosity_idx]);
-              double melting_rate = eq_melt_fraction - old_porosity[i];
+              // we can either use a simplified, linear parametrization, or read the melt fraction
+              // from a file
+              double melting_rate = 0.0;
+              if(read_melt_from_file)
+                {
+                  const double eq_melt_fraction = melt_fraction_lookup->peridotite_melt_fraction(in.temperature[i],in.pressure[i]);
+                  // TODO: interpolate between basalt and peridotite if depletion < 0!
 
-              // do not allow negative porosity
+                  eq_melt_composition = melt_fraction_lookup->basalt_melt_fraction(in.temperature[i],in.pressure[i]);
+                  if (eq_melt_fraction >= std::max(old_depletion[i],0.0))
+                    melting_rate = eq_melt_fraction - std::max(old_depletion[i],0.0);
+                  else
+                    melting_rate = (old_melt_composition[i] > std::max(eq_melt_composition, 0.0)
+                                   ?
+                                   (eq_melt_composition - old_melt_composition[i]) / old_melt_composition[i]
+                                   :
+                                   0.0);
+                }
+              else
+                {
+                  const double eq_melt_fraction = melt_fraction(in.temperature[i],
+                                                                this->get_adiabatic_conditions().pressure(in.position[i]),
+                                                                in.composition[i][peridotite_idx] - in.composition[i][porosity_idx]);
+                  melting_rate = eq_melt_fraction - old_porosity[i];
+                }
+
+              // do not allow negative porosity or porosity > 1
               if (old_porosity[i] + melting_rate < 0)
                 melting_rate = -old_porosity[i];
+              if (old_porosity[i] + melting_rate > 1)
+                melting_rate = 1.0 - old_porosity[i];
 
               for (unsigned int c=0; c<in.composition[i].size(); ++c)
                 {
@@ -429,6 +500,13 @@ namespace aspect
                   else if (c == porosity_idx && this->get_timestep_number() > 1 && (in.strain_rate.size()))
                     out.reaction_terms[i][c] = melting_rate
                                                * out.densities[i]  / this->get_timestep();
+                  else if (c == crystallization_idx && this->get_timestep_number() > 1 && (in.strain_rate.size()))
+                    out.reaction_terms[i][c] = (melting_rate > 0
+                                                ?
+                                                0.0 /*std::min(std::max(old_porosity[i], 0.0), 1.0) * old_melt_composition[i]
+                                                + melting_rate * eq_melt_composition*/
+                                                :
+                                                std::max(melting_rate/old_melt_composition[i], -old_melt_composition[i]));
                   else
                     out.reaction_terms[i][c] = 0.0;
 
@@ -437,7 +515,7 @@ namespace aspect
                     {
                       if (reaction_rate_out != NULL)
                         {
-                          if (c == peridotite_idx && this->get_timestep_number() > 0)
+                          if ((c == peridotite_idx || c == crystallization_idx) && this->get_timestep_number() > 0)
                             reaction_rate_out->reaction_rates[i][c] = out.reaction_terms[i][c] / this->get_timestep() ;
                           else if (c == porosity_idx && this->get_timestep_number() > 0)
                             reaction_rate_out->reaction_rates[i][c] = melting_rate / this->get_timestep();
