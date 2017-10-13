@@ -498,6 +498,9 @@ namespace aspect
     std::map<unsigned int, std::pair<std::string,unsigned int> > mapped_particle_properties;
 
     std::vector<unsigned int>      normalized_fields;
+
+    std::vector<double>            list_of_chemical_diffusivities;
+    std::vector<double>            list_of_isotope_fractionation_factors;
     /**
      * @}
      */

@@ -951,6 +951,19 @@ namespace aspect
                          "at every point and the global maximum is determined. "
                          "Second, the compositional fields to be normalized are "
                          "divided by this maximum.");
+      prm.declare_entry ("List of chemical diffusivities", "0.0",
+                         Patterns::List (Patterns::Double(0)),
+                         "A list of chemical diffusivities for each compositional field in the "
+                         "order they are given in Names of fields. If only one value is given, "
+                         "it is used for all fields. "
+                         "Units: $m^2/s$.");
+      prm.declare_entry ("List of isotope fractionation factors", "0.0",
+                         Patterns::List (Patterns::Double(0)),
+                         "A list of Chapman-Enskog fractionation factors for each compositional "
+                         "field in the order they are given in Names of fields. The factor determines "
+                         "how much different isotopes fractionate in the presence of a given temperature "
+                         "gradient. If only one value is given, it is used for all fields. "
+                         "Units: none.");
     }
     prm.leave_subsection ();
 
@@ -1369,6 +1382,13 @@ namespace aspect
 
       AssertThrow (normalized_fields.size() <= n_compositional_fields,
                    ExcMessage("Invalid input parameter file: Too many entries in List of normalized fields"));
+
+      list_of_chemical_diffusivities = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("List of chemical diffusivities"))),
+                                                                               n_compositional_fields,
+                                                                               "List of chemical diffusivities");
+      list_of_isotope_fractionation_factors = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("List of isotope fractionation factors"))),
+                                                                                      n_compositional_fields,
+                                                                                      "List of isotope fractionation factors");
 
       // global_composition_max_preset.size() and global_composition_min_preset.size() are obtained early than
       // n_compositional_fields. Therefore, we can only check if their sizes are the same here.

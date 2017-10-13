@@ -64,6 +64,21 @@ namespace aspect
     };
 
     /**
+     * This function assembles the face terms for the matrix and right-hand-side of the advection
+     * equation for a face at the boundary of the domain.
+     */
+    template <int dim>
+    class AdvectionSystemDiffusionBoundary : public Assemblers::Interface<dim>,
+      public SimulatorAccess<dim>
+    {
+      public:
+        virtual
+        void
+        execute(internal::Assembly::Scratch::ScratchBase<dim>  &scratch,
+                internal::Assembly::CopyData::CopyDataBase<dim> &data) const;
+    };
+
+    /**
      * This class assembles the face terms for the matrix and right-hand-side of
      * the discontinuous advection equation for a face in the interior of the domain.
      */

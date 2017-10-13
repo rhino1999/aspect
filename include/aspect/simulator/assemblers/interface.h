@@ -262,6 +262,9 @@ namespace aspect
           std::vector<std::vector<double> > old_old_composition_values;
 
           std::vector<double>         current_temperature_values;
+          std::vector<Tensor<1,dim> > current_temperature_gradients;
+          std::vector<Tensor<1,dim> > face_current_temperature_gradients;
+
           std::vector<Tensor<1,dim> > current_velocity_values;
           std::vector<Tensor<1,dim> > face_current_velocity_values;
           std::vector<Tensor<1,dim> > mesh_velocity_values;

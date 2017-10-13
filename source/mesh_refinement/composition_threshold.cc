@@ -69,7 +69,7 @@ namespace aspect
 
                   // if the composition exceeds the threshold, cell is marked for refinement
                   for (unsigned int j=0; j<this->get_fe().base_element(this->introspection().base_elements.compositional_fields).dofs_per_cell; ++j)
-                    if (composition_values[j] > composition_thresholds[c])
+                    if (std::abs(composition_values[j] - composition_thresholds[c]) > composition_deviation[c])
                       {
                         refine = true;
                         break;
@@ -99,6 +99,11 @@ namespace aspect
                             Patterns::List (Patterns::Double()),
                             "A list of thresholds that every individual compositional "
                             "field will be evaluated against.");
+          prm.declare_entry("Compositional field deviation thresholds",
+                            "",
+                            Patterns::List (Patterns::Double()),
+                            "A list of deviations that every individual compositional "
+                            "field will be evaluated against.");
         }
         prm.leave_subsection();
       }
@@ -117,9 +122,13 @@ namespace aspect
             = Utilities::string_to_double(
                 Utilities::split_string_list(prm.get("Compositional field thresholds")));
 
+          composition_deviation
+            = Utilities::string_to_double(
+                Utilities::split_string_list(prm.get("Compositional field deviation thresholds")));
+
           AssertThrow (composition_thresholds.size() == this->n_compositional_fields(),
                        ExcMessage ("The number of thresholds given here must be "
-                                   "equal to the number of chosen refinement criteria."));
+                                   "equal to the number of compositional fields."));
         }
         prm.leave_subsection();
       }

@@ -71,6 +71,11 @@ namespace aspect
          * compositional fields.
          */
         std::vector<double> composition_thresholds;
+
+        /**
+         * How much the composition can deviate from the reference value.
+         */
+        std::vector<double> composition_deviation;
     };
   }
 }

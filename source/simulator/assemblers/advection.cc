@@ -77,12 +77,16 @@ namespace aspect
 
       const FEValuesExtractors::Scalar solution_field = advection_field.scalar_extractor(introspection);
 
+      scratch.finite_element_values[introspection.extractors.temperature].get_function_gradients (this->get_solution(),
+          scratch.current_temperature_gradients);
+
       for (unsigned int q=0; q<n_q_points; ++q)
         {
           // precompute the values of shape functions and their gradients.
           // We only need to look up values of shape functions if they
           // belong to 'our' component. They are zero otherwise anyway.
           // Note that we later only look at the values that we do set here.
+          // TODO: what if the finite elements of temperature and composition are different?
           for (unsigned int i=0, i_advection=0; i_advection<advection_dofs_per_cell;/*increment at end of loop*/)
             {
               if (fe.system_to_component_index(i).first == solution_component)
@@ -106,12 +110,13 @@ namespace aspect
                   ExcMessage ("The product of density and c_P needs to be a "
                               "non-negative quantity."));
 
+          const unsigned int c = advection_field.compositional_variable;
           const double conductivity =
             ((advection_field_is_temperature)
              ?
              scratch.material_model_outputs.thermal_conductivities[q]
              :
-             0.0);
+             this->get_parameters().list_of_chemical_diffusivities[c]);
           const double latent_heat_LHS =
             ((advection_field_is_temperature)
              ?
@@ -121,6 +126,15 @@ namespace aspect
           Assert (density_c_P + latent_heat_LHS >= 0,
                   ExcMessage ("The sum of density times c_P and the latent heat contribution "
                               "to the left hand side needs to be a non-negative quantity."));
+
+          const double fractionation_term =
+            (advection_field_is_temperature
+             ?
+             0.0
+             :
+             this->get_parameters().list_of_isotope_fractionation_factors[c]
+             * (1.0 - scratch.material_model_inputs.composition[q][c]))
+             / scratch.material_model_inputs.temperature[q];
 
           const double gamma =
             ((advection_field_is_temperature)
@@ -176,6 +190,9 @@ namespace aspect
                   += (
                        (time_step * (conductivity + scratch.artificial_viscosity)
                         * (scratch.grad_phi_field[i] * scratch.grad_phi_field[j]))
+                       // new term due to fractionation
+                       + time_step * fractionation_term
+                       * (scratch.current_temperature_gradients[q] * scratch.grad_phi_field[i]) * scratch.phi_field[j]
                        + ((time_step * (scratch.phi_field[i] * (current_u * scratch.grad_phi_field[j])))
                           + (bdf2_factor * scratch.phi_field[i] * scratch.phi_field[j])) *
                        (density_c_P + latent_heat_LHS)
@@ -449,6 +466,92 @@ namespace aspect
       else
         {
           // Neumann temperature term - no non-zero contribution as only homogeneous Neumann boundary conditions are implemented elsewhere for temperature
+        }
+    }
+
+
+
+    template <int dim>
+    void
+	AdvectionSystemDiffusionBoundary<dim>::execute(internal::Assembly::Scratch::ScratchBase<dim>   &scratch_base,
+			                                       internal::Assembly::CopyData::CopyDataBase<dim> &data_base) const
+    {
+      internal::Assembly::Scratch::AdvectionSystem<dim> &scratch = dynamic_cast<internal::Assembly::Scratch::AdvectionSystem<dim>& > (scratch_base);
+      internal::Assembly::CopyData::AdvectionSystem<dim> &data = dynamic_cast<internal::Assembly::CopyData::AdvectionSystem<dim>& > (data_base);
+
+      const Parameters<dim> &parameters = this->get_parameters();
+      const Introspection<dim> &introspection = this->introspection();
+      const FiniteElement<dim> &fe = this->get_fe();
+      const typename Simulator<dim>::AdvectionField advection_field = *scratch.advection_field;
+
+      const unsigned int n_q_points    = scratch.face_finite_element_values->n_quadrature_points;
+      const unsigned int face_no       = scratch.face_number;
+
+      const double time_step = this->get_timestep();
+
+      if (advection_field.is_temperature())
+        return;
+
+      // also have the number of dofs that correspond just to the element for
+      // the system we are currently trying to assemble
+      const unsigned int advection_dofs_per_cell = data.local_dof_indices.size();
+
+      Assert (advection_dofs_per_cell < scratch.face_finite_element_values->get_fe().dofs_per_cell, ExcInternalError());
+      Assert (scratch.face_grad_phi_field.size() == advection_dofs_per_cell, ExcInternalError());
+      Assert (scratch.face_phi_field.size() == advection_dofs_per_cell, ExcInternalError());
+
+      const unsigned int solution_component = advection_field.component_index(introspection);
+
+      const FEValuesExtractors::Scalar solution_field = advection_field.scalar_extractor(introspection);
+
+      typename DoFHandler<dim>::face_iterator face = scratch.cell->face (face_no);
+
+      (*scratch.face_finite_element_values)[introspection.extractors.temperature].get_function_gradients (this->get_solution(),
+          scratch.face_current_temperature_gradients);
+
+      if (this->get_fixed_composition_boundary_indicators().find(face->boundary_id())
+          == this->get_fixed_composition_boundary_indicators().end()
+          && (!scratch.cell->has_periodic_neighbor(face_no)))
+        {
+          /*
+           * We are in the case of a Neumann composition boundary.
+           */
+          for (unsigned int q=0; q<n_q_points; ++q)
+            {
+              // precompute the values of shape functions and their gradients.
+              // We only need to look up values of shape functions if they
+              // belong to 'our' component. They are zero otherwise anyway.
+              // Note that we later only look at the values that we do set here.
+              for (unsigned int i=0, i_advection=0; i_advection<advection_dofs_per_cell; /*increment at end of loop*/)
+                {
+                  if (fe.system_to_component_index(i).first == solution_component)
+                    {
+                      scratch.face_phi_field[i_advection]      = (*scratch.face_finite_element_values)[solution_field].value (i, q);
+                      ++i_advection;
+                    }
+                  ++i;
+                }
+
+              const unsigned int c = advection_field.compositional_variable;
+
+              // for no flux, this term has to be zero at the boundary!
+              const double fractionation_term = 0.0; /*this->get_parameters().list_of_isotope_fractionation_factors[c]
+                                                * (1.0 - scratch.face_material_model_inputs.composition[q][c])
+                                                / scratch.material_model_inputs.temperature[q];*/
+
+              for (unsigned int i=0; i<advection_dofs_per_cell; ++i)
+                {
+                  // local_matrix terms
+                  for (unsigned int j=0; j<advection_dofs_per_cell; ++j)
+                    {
+                      data.local_matrix(i,j)
+                      += (- time_step * fractionation_term
+                          * (scratch.face_current_temperature_gradients[q] * scratch.face_finite_element_values->normal_vector(q))
+                          * scratch.face_phi_field[i] * scratch.face_phi_field[j])
+                         * scratch.face_finite_element_values->JxW(q);
+                    }
+                }
+            }
         }
     }
 
@@ -1153,6 +1256,7 @@ namespace aspect
 #define INSTANTIATE(dim) \
   template class AdvectionSystem<dim>; \
   template class AdvectionSystemBoundaryFace<dim>; \
+  template class AdvectionSystemDiffusionBoundary<dim>; \
   template class AdvectionSystemInteriorFace<dim>; \
    
     ASPECT_INSTANTIATE(INSTANTIATE)
