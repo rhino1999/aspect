@@ -1,0 +1,44 @@
+-----------------------------------------------------------------------------
+-----------------------------------------------------------------------------
+
+Number of active cells: 1,024 (on 6 levels)
+Number of degrees of freedom: 37,067 (8,450+2,178+8,450+1,089+4,225+4,225+4,225+4,225)
+
+*** Timestep 0:  t=0 years
+   Solving temperature system... 0 iterations.
+   Skipping porosity composition solve because RHS is zero.
+   Solving solid_composition system ... 0 iterations.
+   Skipping melt_composition composition solve because RHS is zero.
+   Rebuilding Stokes preconditioner...
+   Solving Stokes system... 21+0 iterations.
+   Solving for u_f in 0 iterations.
+
+   Postprocessing:
+     Writing graphical output:  output-plot_binary_loop/solution/solution-00000
+     Compositions min/max/mass: 0/0/0 // 0/1/5e+09 // 0/0/0
+     RMS, max velocity:         3.22e-18 m/year, 2.06e-17 m/year
+     Temperature min/avg/max:   1200 K, 1800 K, 2400 K
+
+*** Timestep 1:  t=1 years
+   Solving composition reactions in 1 substep(s).
+   Solving temperature system... 4 iterations.
+   Solving porosity system ... 0 iterations.
+   Solving solid_composition system ... 0 iterations.
+   Solving melt_composition system ... 0 iterations.
+   Rebuilding Stokes preconditioner...
+   Solving Stokes system... 200+30 iterations.
+   Solving for u_f in 14 iterations.
+
+   Postprocessing:
+     Writing graphical output:  output-plot_binary_loop/solution/solution-00001
+     Compositions min/max/mass: 0/1/4.486e+09 // 0/1/5.159e+09 // 0/1/1.938e+09
+     RMS, max velocity:         5.96e-14 m/year, 4.22e-13 m/year
+     Temperature min/avg/max:   1200 K, 1800 K, 2400 K
+
+Termination requested by criterion: end time
+
+
++---------------------------------------------+------------+------------+
++---------------------------------+-----------+------------+------------+
++---------------------------------+-----------+------------+------------+
+

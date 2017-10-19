@@ -1,0 +1,31 @@
+# 1: Time step number
+# 2: Time (years)
+# 3: Time step size (years)
+# 4: Number of mesh cells
+# 5: Number of Stokes degrees of freedom
+# 6: Number of temperature degrees of freedom
+# 7: Number of degrees of freedom for all compositions
+# 8: Iterations for temperature solver
+# 9: Iterations for composition solver 1
+# 10: Iterations for composition solver 2
+# 11: Iterations for composition solver 3
+# 12: Iterations for Stokes solver
+# 13: Velocity iterations in Stokes preconditioner
+# 14: Schur complement iterations in Stokes preconditioner
+# 15: Visualization file name
+# 16: Minimal value for composition porosity
+# 17: Maximal value for composition porosity
+# 18: Global mass for composition porosity
+# 19: Minimal value for composition solid_composition
+# 20: Maximal value for composition solid_composition
+# 21: Global mass for composition solid_composition
+# 22: Minimal value for composition melt_composition
+# 23: Maximal value for composition melt_composition
+# 24: Global mass for composition melt_composition
+# 25: RMS velocity (m/year)
+# 26: Max. velocity (m/year)
+# 27: Minimal temperature (K)
+# 28: Average temperature (K)
+# 29: Maximal temperature (K)
+0 0.000000000000e+00 0.000000000000e+00 1024 9539 4225 12675 0 0 0 0  21  22  21 output-plot_binary_loop/solution/solution-00000 0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00 1.00000000e+00 5.00000000e+09 0.00000000e+00 0.00000000e+00 0.00000000e+00 3.21890167e-18 2.06198396e-17 1.20000000e+03 1.80000000e+03 2.40000000e+03 
+1 1.000000000000e+00 1.000000000000e+00 1024 9539 4225 12675 4 0 0 0 230 668 854 output-plot_binary_loop/solution/solution-00001 0.00000000e+00 1.00000000e+00 4.48596032e+09 0.00000000e+00 1.00000000e+00 5.15917580e+09 0.00000000e+00 1.00000000e+00 1.93770543e+09 5.95738489e-14 4.21608805e-13 1.20000077e+03 1.80000000e+03 2.39999923e+03 

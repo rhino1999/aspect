@@ -85,74 +85,58 @@ namespace aspect
                    double &new_solid_composition,
                    double &new_melt_composition) const
     {
-      //BC = 0.89;% fraction between
-      const double P = pressure; // pressure is assumed to be in GPa
-      const double T = temperature;   // tmperature in K
-      const double R = constants::gas_constant;       // Ideal Gas Constant
+      // after Phipps Morgan, Jason. "Thermodynamics of pressure release melting of a veined plum pudding mantle."
+      // Geochemistry, Geophysics, Geosystems 2.4 (2001). Values below taken from table A1.
 
-      const double T_Fo_melting_surface = 2163.0; // Kelvin at 1 atmosphere - reference melting temperature for forsterite
-      const double T_Fa_melting_surface = 1478.0; // Kelvin at 1 atmosphere - reference melting temperature for forsterite
+      const double P = pressure;                   // pressure in Pa
+      const double T = temperature;                // tmperature in K
+      const double R = constants::gas_constant;    // Ideal Gas Constant
 
-      const double dS_Fo = 60.0; // entropy change in J/mol K
-      const double dS_Fa = 60.0; // entropy change in J/mol K
+      const double T_Fo_melting_surface = 2163.0;  // Kelvin at 1 atmosphere - reference melting temperature for forsterite
+      const double T_Fa_melting_surface = 1478.0;  // Kelvin at 1 atmosphere - reference melting temperature for fayalite
 
-      const double vliq_ref = 49.0/std::pow(100.0,3); // m3/mol
-      const double vsol_ref_Fo = 46.0/std::pow(100.0,3); // m3/mol
-      const double vsol_ref_Fa = 46.0/std::pow(100.0,3); // m3/mol
+      const double dS_Fo = 60.0;                   // entropy change of melting in J/mol K
+      const double dS_Fa = 60.0;                   // entropy change of melting in J/mol K
 
-      const double surface_pressure = 1.e5; // 1 atmosphere = 1e5 Pa
+      const double vliq_ref = 49.0/1.e6;           // reference molar volume of the melt in m3/mol
+      const double vsol_ref_Fo = 46.0/1.e6;        // reference molar volume of solid forsterite in m3/mol
+      const double vsol_ref_Fa = 46.0/1.e6;        // reference molar volume of solid fayalite in m3/mol
 
-      const double beta_sol_Fo = 8.e-3/1.e9; //1/Pa
-      const double beta_sol_Fa = 8.e-3/1.e9; //1/Pa
-      const double beta_liq = 1.7e-2/1.e9; //1/Pa
+      const double surface_pressure = 1.e5;        // 1 atmosphere = 1e5 Pa
 
-      // Melting Temperatures of Pure end-members as a function of Pressure
-      // Eq. (A13) of Phipps Morgan 2001
-      const double T_Fo_melting = T_Fo_melting_surface
-                                  + (((vliq_ref - vsol_ref_Fo) * (P-surface_pressure))
-                                      - ((vliq_ref * beta_liq - vsol_ref_Fo * beta_sol_Fo)
-                                          * (std::pow(P,2) - std::pow(surface_pressure,2))))/dS_Fo;
-      const double T_Fa_melting = T_Fa_melting_surface
-                                  + (((vliq_ref - vsol_ref_Fa) * (P-surface_pressure))
-                                      - ((vliq_ref * beta_liq - vsol_ref_Fa * beta_sol_Fa)
-                                          * (std::pow(P,2) - std::pow(surface_pressure,2))))/dS_Fa;
+      const double beta_sol_Fo = 8.e-3/1.e9;       // compressibility of solid forsterite in 1/Pa
+      const double beta_sol_Fa = 8.e-3/1.e9;       // compressibility of solid fayalite 1/Pa
+      const double beta_liq = 1.7e-2/1.e9;         // compressibility of the melt in 1/Pa
 
-      // Free Energy Change due to Melting
-      const double dG_Fo_T_P = (T_Fo_melting_surface - T) * dS_Fo
+      // Free Energy Change Delta_G due to Melting as a function of temperature and pressure, for forsterite and fayalite.
+      // Equation (A9) in Phipps Morgan (2001).
+      const double dG_Fo = (T_Fo_melting_surface - T) * dS_Fo
                                + (vliq_ref - vsol_ref_Fo) * (P-surface_pressure)
                                - ((vliq_ref * beta_liq - vsol_ref_Fo * beta_sol_Fo) * (std::pow(P,2) - std::pow(surface_pressure,2)));
-      const double dG_Fa_T_P = (T_Fa_melting_surface - T) * dS_Fa
+      const double dG_Fa = (T_Fa_melting_surface - T) * dS_Fa
                                + (vliq_ref - vsol_ref_Fa) * (P-surface_pressure)
                                - ((vliq_ref * beta_liq - vsol_ref_Fa * beta_sol_Fa) * (std::pow(P,2) - std::pow(surface_pressure,2)));
 
-      // Mole Fraction of Each Component in Coexisting Liquids and Solids
-      // const double Xl_Fa = (1.0 - exp(dG_Fo_T_P/(2.0*R*T)))/(exp(dG_Fa_T_P/(2.0*R*T))-exp(dG_Fo_T_P/(2.0*R*T)));
-      // const double Xs_Fa = Xl_Fa * exp(dG_Fa_T_P/(2.0*R*T));
-      double Xl_Fo = 1.0 - (1.0 - exp(dG_Fo_T_P/(2.0*R*T)))/(exp(dG_Fa_T_P/(2.0*R*T))-exp(dG_Fo_T_P/(2.0*R*T)));
-      double Xs_Fo = Xl_Fo * exp(dG_Fo_T_P/(2.0*R*T));
+      // Mole Fraction of Each Component in Coexisting Liquids and Solids, equations (A10 - A12) in Phipps Morgan (2001)
+      double Xl_Fo = 1.0 - (1.0 - exp(dG_Fo/(2.0*R*T)))/(exp(dG_Fa/(2.0*R*T))-exp(dG_Fo/(2.0*R*T)));
+      double Xs_Fo = Xl_Fo * exp(dG_Fo/(2.0*R*T));
 
-      double melt_fraction = 0.0;
-      if (T >= T_Fo_melting)
-        melt_fraction = 1.0;
-      else if (T <= T_Fa_melting)
-        melt_fraction = 0.0;
-      else
-        melt_fraction = (bulk_composition - Xs_Fo)/(Xl_Fo - Xs_Fo);
-
-      if (melt_fraction <= 0)
+      double melt_fraction;
+      if (Xs_Fo <= bulk_composition)      // below the solidus
         {
           melt_fraction = 0;
           new_solid_composition = bulk_composition;
         }
-      else if (melt_fraction >= 1)
+      else if (Xl_Fo >= bulk_composition) // above the liquidus
         {
           melt_fraction = 1;
           new_melt_composition = bulk_composition;
         }
-      else
+      else                                // between solidus and liquidis
         {
           new_solid_composition = Xs_Fo;
           new_melt_composition = Xl_Fo;
+          melt_fraction = (bulk_composition - Xs_Fo)/(Xl_Fo - Xs_Fo);
         }
 
       return melt_fraction;
@@ -195,63 +179,31 @@ namespace aspect
     BinarySolidSolution<dim>::
     evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const
     {
-      std::vector<double> old_porosity(in.position.size());
-      std::vector<double> old_solid_composition(in.position.size());
-      std::vector<double> old_melt_composition(in.position.size());
-
       ReactionRateOutputs<dim> *reaction_rate_out = out.template get_additional_output<ReactionRateOutputs<dim> >();
+
+      if (this->include_melt_transport() && include_melting_and_freezing)
+       AssertThrow(this->get_parameters().use_operator_splitting && this->get_parameters().reaction_steps_per_advection_step == 1,
+                    ExcMessage("Material model binary solid solution with melt transport only "
+                               "works with the Operator splitting solver option enabled, "
+                               "and the Reaction time steps per advection step have to be set to 1."));
 
       // make sure the compositional fields we want to use exist
       if (this->include_melt_transport())
         AssertThrow(this->introspection().compositional_name_exists("porosity"),
-                    ExcMessage("Material model Melt simple with melt transport only "
+                    ExcMessage("Material model binary solid solution with melt transport only "
                                "works if there is a compositional field called porosity."));
 
       if (this->include_melt_transport() && include_melting_and_freezing)
         AssertThrow(this->introspection().compositional_name_exists("solid_composition"),
-                    ExcMessage("Material model Melt global with melting and freezing "
+                    ExcMessage("Material model binary solid solution with melting and freezing "
                                "only works if there is a compositional field called "
                                "solid_composition."));
 
       if (this->include_melt_transport() && include_melting_and_freezing)
         AssertThrow(this->introspection().compositional_name_exists("melt_composition"),
-                    ExcMessage("Material model Melt global with melting and freezing "
+                    ExcMessage("Material model binary solid solution with melting and freezing "
                                "only works if there is a compositional field called "
                                "melt_composition."));
-
-      // we want to get the porosity field from the old solution here,
-      // because we need a field that is not updated in the nonlinear iterations
-      if (this->include_melt_transport() && in.current_cell.state() == IteratorState::valid
-          && this->get_timestep_number() > 0 && !this->get_parameters().use_operator_splitting
-          && include_melting_and_freezing)
-        {
-          // Prepare the field function
-          Functions::FEFieldFunction<dim, DoFHandler<dim>, LinearAlgebra::BlockVector>
-          fe_value(this->get_dof_handler(), this->get_old_solution(), this->get_mapping());
-
-          const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
-          const unsigned int solid_composition_idx = this->introspection().compositional_index_for_name("solid_composition");
-          const unsigned int melt_composition_idx = this->introspection().compositional_index_for_name("melt_composition");
-
-          fe_value.set_active_cell(in.current_cell);
-          fe_value.value_list(in.position,
-                              old_porosity,
-                              this->introspection().component_indices.compositional_fields[porosity_idx]);
-          fe_value.value_list(in.position,
-                              old_solid_composition,
-                              this->introspection().component_indices.compositional_fields[solid_composition_idx]);
-          fe_value.value_list(in.position,
-                              old_melt_composition,
-                              this->introspection().component_indices.compositional_fields[melt_composition_idx]);
-        }
-      else if (this->get_parameters().use_operator_splitting && this->include_melt_transport() && include_melting_and_freezing)
-        for (unsigned int i=0; i<in.position.size(); ++i)
-          {
-            const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
-            old_porosity[i] = in.composition[i][porosity_idx];
-            old_solid_composition[i] = in.composition[i][this->introspection().compositional_index_for_name("solid_composition")];
-            old_melt_composition[i] = in.composition[i][this->introspection().compositional_index_for_name("melt_composition")];
-          }
 
       for (unsigned int i=0; i<in.position.size(); ++i)
         {
@@ -280,57 +232,45 @@ namespace aspect
               const unsigned int solid_composition_idx = this->introspection().compositional_index_for_name("solid_composition");
               const unsigned int melt_composition_idx = this->introspection().compositional_index_for_name("melt_composition");
 
-              const double porosity = std::min(1.0, std::max(in.composition[i][porosity_idx],0.0));
-              const double solid_composition = std::min(1.0, std::max(old_solid_composition[i],0.0));
-              const double melt_composition = std::min(1.0, std::max(old_melt_composition[i],0.0));
+              const double old_porosity = in.composition[i][porosity_idx];
+              const double old_solid_composition = in.composition[i][solid_composition_idx];
+              const double old_melt_composition = in.composition[i][melt_composition_idx];
+
+              const double porosity = std::min(1.0, std::max(old_porosity,0.0));
+              double solid_composition = std::min(1.0, std::max(old_solid_composition,0.0));
+              double melt_composition = std::min(1.0, std::max(old_melt_composition,0.0));
 
               const double bulk_composition = porosity * melt_composition + (1.0 - porosity) * solid_composition;
 
               // calculate the melting rate as difference between the equilibrium melt fraction
-              // and the solution of the previous time step
-              double new_solid_composition = solid_composition;
-              double new_melt_composition = melt_composition;
+              // and the solution of the previous time step, and also update melt and solid composition
               const double eq_melt_fraction = melt_fraction(in.temperature[i],
                                                             this->get_adiabatic_conditions().pressure(in.position[i]),
                                                             bulk_composition,
-                                                            new_solid_composition,
-                                                            new_melt_composition);
+                                                            solid_composition,
+                                                            melt_composition);
 
               // do not allow negative porosity or porosity > 1
-              const double melting_rate = limit_update_to_0_and_1(old_porosity[i], eq_melt_fraction - old_porosity[i]);
-              const double change_of_solid_composition = limit_update_to_0_and_1(old_solid_composition[i], new_solid_composition - old_solid_composition[i]);
-              const double change_of_melt_composition = limit_update_to_0_and_1(old_melt_composition[i], new_melt_composition - old_melt_composition[i]);
+              const double melting_rate = limit_update_to_0_and_1(old_porosity, eq_melt_fraction - old_porosity);
+              const double change_of_solid_composition = limit_update_to_0_and_1(old_solid_composition, solid_composition - old_solid_composition);
+              const double change_of_melt_composition = limit_update_to_0_and_1(old_melt_composition, melt_composition - old_melt_composition);
 
               for (unsigned int c=0; c<in.composition[i].size(); ++c)
                 {
-//                  if (c == solid_composition_idx && this->get_timestep_number() > 1 && (in.strain_rate.size()))
-//                    out.reaction_terms[i][c] = change_of_solid_composition
-//                                               - in.composition[i][c] * trace(in.strain_rate[i]) * this->get_timestep();
-//                  else if (c == melt_composition_idx && this->get_timestep_number() > 1 && (in.strain_rate.size()))
-//                    out.reaction_terms[i][c] = change_of_melt_composition;
-//                  else if (c == porosity_idx && this->get_timestep_number() > 1 && (in.strain_rate.size()))
-//                    out.reaction_terms[i][c] = melting_rate
-//                                               * out.densities[i]  / this->get_timestep();
-//                  else
-//                    out.reaction_terms[i][c] = 0.0;
-
-                  // fill reaction rate outputs if the model uses operator splitting
-                  if (this->get_parameters().use_operator_splitting)
+                  // fill reaction rate outputs
+                  if (reaction_rate_out != NULL)
                     {
-                      if (reaction_rate_out != NULL)
-                        {
-                          if (c == solid_composition_idx && this->get_timestep_number() > 0)
-                            reaction_rate_out->reaction_rates[i][c] = change_of_solid_composition / this->get_timestep()
-                                                                      - in.composition[i][c] * trace(in.strain_rate[i]);
-                          else if (c == melt_composition_idx && this->get_timestep_number() > 0)
-                            reaction_rate_out->reaction_rates[i][c] = change_of_melt_composition / this->get_timestep();
-                          else if (c == porosity_idx && this->get_timestep_number() > 0)
-                            reaction_rate_out->reaction_rates[i][c] = melting_rate / this->get_timestep();
-                          else
-                            reaction_rate_out->reaction_rates[i][c] = 0.0;
-                        }
-                      out.reaction_terms[i][c] = 0.0;
+                      if (c == solid_composition_idx && this->get_timestep_number() > 0)
+                        reaction_rate_out->reaction_rates[i][c] = change_of_solid_composition / this->get_timestep()
+                                                                  - old_solid_composition * trace(in.strain_rate[i]);
+                      else if (c == melt_composition_idx && this->get_timestep_number() > 0)
+                        reaction_rate_out->reaction_rates[i][c] = change_of_melt_composition / this->get_timestep();
+                      else if (c == porosity_idx && this->get_timestep_number() > 0)
+                        reaction_rate_out->reaction_rates[i][c] = melting_rate / this->get_timestep();
+                      else
+                        reaction_rate_out->reaction_rates[i][c] = 0.0;
                     }
+                  out.reaction_terms[i][c] = 0.0;
                 }
 
               out.viscosities[i] = eta_0 * exp(- alpha_phi * porosity);
@@ -583,13 +523,10 @@ namespace aspect
   {
     ASPECT_REGISTER_MATERIAL_MODEL(BinarySolidSolution,
                                    "binary solid solution",
-                                   "A material model that implements a simple formulation of the "
-                                   "material parameters required for the modelling of melt transport, "
-                                   "including a source term for the porosity according to a simplified "
-                                   "linear melting model similar to \\cite{schmeling2006}:\n"
-                                   "$\\phi_\\text{equilibrium} = \\frac{T-T_\\text{sol}}{T_\\text{liq}-T_\\text{sol}}$\n"
-                                   "with "
-                                   "$T_\\text{sol} = T_\\text{sol,0} + \\Delta T_p \\, p + \\Delta T_c \\, C$ \n"
-                                   "$T_\\text{liq} = T_\\text{sol}  + \\Delta T_\\text{sol-liq}$.")
+                                   "A material model that implements melting and freezing for an olivine "
+                                   "solid-solution model with the ideal end-members Mg2SiO4 (forsterite) "
+                                   "and Fe2SiO4 (fayalite), as described in Phipps Morgan, Jason. "
+                                   "Thermodynamics of pressure release melting of a veined plum pudding "
+                                   "mantle. Geochemistry, Geophysics, Geosystems 2.4 (2001).")
   }
 }
