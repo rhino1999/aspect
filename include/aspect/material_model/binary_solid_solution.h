@@ -110,8 +110,12 @@ namespace aspect
 
 
       private:
-        double reference_rho_s;
-        double reference_rho_f;
+        double melt_density;
+        double melt_compressibility;
+        double forsterite_density;
+        double fayalite_density;
+        double forsterite_compressibility;
+        double fayalite_compressibility;
         double reference_T;
         double eta_0;
         double xi_0;
@@ -123,12 +127,6 @@ namespace aspect
         double thermal_conductivity;
         double reference_permeability;
         double alpha_phi;
-        double depletion_density_change;
-        double depletion_solidus_change;
-        double pressure_solidus_change;
-        double surface_solidus;
-        double compressibility;
-        double melt_compressibility;
         bool include_melting_and_freezing;
 
         // entropy change upon melting

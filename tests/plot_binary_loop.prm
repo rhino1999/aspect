@@ -133,12 +133,12 @@ subsection Material model
     # First we describe the parameters for the solid, in the same way
     # we did in the model without melt transport
     set Thermal conductivity              = 4.7
-    set Reference solid density           = 5000
+    set Reference forsterite density      = 5000
+    set Reference fayalite density        = 5000
     set Thermal expansion coefficient     = 0.0
     set Reference shear viscosity         = 5e21
     set Thermal viscosity exponent        = 7
     set Reference temperature             = 1600
-    set Solid compressibility             = 0.0
     
     # The melt usually has a different (lower) density than the solid.
     set Reference melt density            = 5000
@@ -146,10 +146,7 @@ subsection Material model
     set Reference bulk viscosity          = 1e19
     set Exponential melt weakening factor = 10
     set Thermal bulk viscosity exponent   = 7
-    set Melt compressibility              = 0.0
-    set Melt bulk modulus derivative      = 0.0
     set Reference melt viscosity          = 1
-    set Depletion density change          = 0.0
   end
 end
 

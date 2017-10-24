@@ -95,8 +95,8 @@ namespace aspect
       const double T_Fo_melting_surface = 2163.0;  // Kelvin at 1 atmosphere - reference melting temperature for forsterite
       const double T_Fa_melting_surface = 1478.0;  // Kelvin at 1 atmosphere - reference melting temperature for fayalite
 
-      const double dS_Fo = 60.0;                   // entropy change of melting in J/mol K
-      const double dS_Fa = 60.0;                   // entropy change of melting in J/mol K
+      const double dS_Fo = 60.0;                   // entropy change of melting in J/mol K = 901.961 J/(kg K)
+      const double dS_Fa = 60.0;                   // entropy change of melting in J/mol K = 623.025 J/(kg K)
 
       const double vliq_ref = 49.0/1.e6;           // reference molar volume of the melt in m3/mol
       const double vsol_ref_Fo = 46.0/1.e6;        // reference molar volume of solid forsterite in m3/mol
@@ -104,18 +104,14 @@ namespace aspect
 
       const double surface_pressure = 1.e5;        // 1 atmosphere = 1e5 Pa
 
-      const double beta_sol_Fo = 8.e-3/1.e9;       // compressibility of solid forsterite in 1/Pa
-      const double beta_sol_Fa = 8.e-3/1.e9;       // compressibility of solid fayalite 1/Pa
-      const double beta_liq = 1.7e-2/1.e9;         // compressibility of the melt in 1/Pa
-
       // Free Energy Change Delta_G due to Melting as a function of temperature and pressure, for forsterite and fayalite.
       // Equation (A9) in Phipps Morgan (2001).
       const double dG_Fo = (T_Fo_melting_surface - T) * dS_Fo
                                + (vliq_ref - vsol_ref_Fo) * (P-surface_pressure)
-                               - ((vliq_ref * beta_liq - vsol_ref_Fo * beta_sol_Fo) * (std::pow(P,2) - std::pow(surface_pressure,2)));
+                               - ((vliq_ref * melt_compressibility - vsol_ref_Fo * forsterite_compressibility) * 0.5 * (std::pow(P,2) - std::pow(surface_pressure,2)));
       const double dG_Fa = (T_Fa_melting_surface - T) * dS_Fa
                                + (vliq_ref - vsol_ref_Fa) * (P-surface_pressure)
-                               - ((vliq_ref * beta_liq - vsol_ref_Fa * beta_sol_Fa) * (std::pow(P,2) - std::pow(surface_pressure,2)));
+                               - ((vliq_ref * melt_compressibility - vsol_ref_Fa * fayalite_compressibility) * 0.5 * (std::pow(P,2) - std::pow(surface_pressure,2)));
 
       // Mole Fraction of Each Component in Coexisting Liquids and Solids, equations (A10 - A12) in Phipps Morgan (2001)
       double Xl_Fo = 1.0 - (1.0 - exp(dG_Fo/(2.0*R*T)))/(exp(dG_Fa/(2.0*R*T))-exp(dG_Fo/(2.0*R*T)));
@@ -217,13 +213,15 @@ namespace aspect
             temperature_dependence -= (in.temperature[i] - reference_T) * thermal_expansivity;
 
           // calculate composition dependence of density
-          const double delta_rho = this->introspection().compositional_name_exists("solid_composition")
-                                   ?
-                                   depletion_density_change * in.composition[i][this->introspection().compositional_index_for_name("solid_composition")]
-                                   :
-                                   0.0;
-          out.densities[i] = (reference_rho_s + delta_rho) * temperature_dependence
-                             * std::exp(compressibility * (in.pressure[i] - this->get_surface_pressure()));
+          const double fo_density = forsterite_density * std::exp(forsterite_compressibility * (in.pressure[i] - this->get_surface_pressure()));
+          const double fa_density = fayalite_density * std::exp(fayalite_compressibility * (in.pressure[i] - this->get_surface_pressure()));
+          const double fo_fraction = this->introspection().compositional_name_exists("solid_composition")
+                                     ?
+                                     std::min(1.0, std::max(0.0, in.composition[i][this->introspection().compositional_index_for_name("solid_composition")]))
+                                     :
+                                     1.0;
+
+          out.densities[i] = (fo_density * fo_fraction + fa_density * (1.0 -  fo_fraction)) * temperature_dependence;
 
           // now compute melting and crystallization
           if (this->include_melt_transport() && include_melting_and_freezing)
@@ -325,7 +323,7 @@ namespace aspect
                                           * thermal_expansivity;
               else
                 temperature_dependence -= (in.temperature[i] - reference_T) * thermal_expansivity;
-              melt_out->fluid_densities[i] = reference_rho_f * temperature_dependence
+              melt_out->fluid_densities[i] = melt_density * temperature_dependence
                                              * std::exp(melt_compressibility * (in.pressure[i] - this->get_surface_pressure()));
 
               melt_out->compaction_viscosities[i] = xi_0 * exp(- alpha_phi * porosity);
@@ -356,10 +354,13 @@ namespace aspect
       {
         prm.enter_subsection("Binary solid solution");
         {
-          prm.declare_entry ("Reference solid density", "3000",
+          prm.declare_entry ("Reference forsterite density", "3060",
                              Patterns::Double (0),
-                             "Reference density of the solid $\\rho_{s,0}$. Units: $kg/m^3$.");
-          prm.declare_entry ("Reference melt density", "2500",
+                             "Reference density of solid forsterite $\\rho_{s,fo}$. Units: $kg/m^3$.");
+          prm.declare_entry ("Reference fayalite density", "4430",
+                             Patterns::Double (0),
+                             "Reference density of solid fayalite $\\rho_{s,fa}$. Units: $kg/m^3$.");
+          prm.declare_entry ("Reference melt density", "3000",
                              Patterns::Double (0),
                              "Reference density of the melt/fluid$\\rho_{f,0}$. Units: $kg/m^3$.");
           prm.declare_entry ("Reference temperature", "293",
@@ -410,44 +411,18 @@ namespace aspect
                              Patterns::Double(),
                              "Reference permeability of the solid host rock."
                              "Units: $m^2$.");
-          prm.declare_entry ("Depletion density change", "0.0",
-                             Patterns::Double (),
-                             "The density contrast between material with a depletion of 1 and a "
-                             "depletion of zero. Negative values indicate lower densities of "
-                             "depleted material. Depletion is indicated by the compositional "
-                             "field with the name peridotite. Not used if this field does not "
-                             "exist in the model. "
-                             "Units: $kg/m^3$.");
-          prm.declare_entry ("Surface solidus", "1300",
+          prm.declare_entry ("Solid forsterite compressibility", "8e-12",
                              Patterns::Double (0),
-                             "Solidus for a pressure of zero. "
-                             "Units: $K$.");
-          prm.declare_entry ("Depletion solidus change", "200.0",
-                             Patterns::Double (),
-                             "The solidus temperature change for a depletion of 100\\%. For positive "
-                             "values, the solidus gets increased for a positive peridotite field "
-                             "(depletion) and lowered for a negative peridotite field (enrichment). "
-                             "Scaling with depletion is linear. Only active when fractional melting "
-                             "is used. "
-                             "Units: $K$.");
-          prm.declare_entry ("Pressure solidus change", "6e-8",
-                             Patterns::Double (),
-                             "The linear solidus temperature change with pressure. For positive "
-                             "values, the solidus gets increased for positive pressures. "
+                             "The value of the compressibility of solid forsterite. "
                              "Units: $1/Pa$.");
-          prm.declare_entry ("Solid compressibility", "0.0",
+          prm.declare_entry ("Solid fayalite compressibility", "8e-12",
                              Patterns::Double (0),
-                             "The value of the compressibility of the solid matrix. "
+                             "The value of the compressibility of solid fayalite. "
                              "Units: $1/Pa$.");
-          prm.declare_entry ("Melt compressibility", "0.0",
+          prm.declare_entry ("Melt compressibility", "1.7e-11",
                              Patterns::Double (0),
                              "The value of the compressibility of the melt. "
                              "Units: $1/Pa$.");
-          prm.declare_entry ("Melt bulk modulus derivative", "0.0",
-                             Patterns::Double (0),
-                             "The value of the pressure derivative of the melt bulk "
-                             "modulus. "
-                             "Units: None.");
           prm.declare_entry ("Include melting and freezing", "true",
                              Patterns::Bool (),
                              "Whether to include melting and freezing (according to a simplified "
@@ -469,8 +444,9 @@ namespace aspect
       {
         prm.enter_subsection("Binary solid solution");
         {
-          reference_rho_s                   = prm.get_double ("Reference solid density");
-          reference_rho_f                   = prm.get_double ("Reference melt density");
+          forsterite_density                = prm.get_double ("Reference forsterite density");
+          fayalite_density                  = prm.get_double ("Reference fayalite density");
+          melt_density                      = prm.get_double ("Reference melt density");
           reference_T                       = prm.get_double ("Reference temperature");
           eta_0                             = prm.get_double ("Reference shear viscosity");
           xi_0                              = prm.get_double ("Reference bulk viscosity");
@@ -482,11 +458,8 @@ namespace aspect
           reference_specific_heat           = prm.get_double ("Reference specific heat");
           thermal_expansivity               = prm.get_double ("Thermal expansion coefficient");
           alpha_phi                         = prm.get_double ("Exponential melt weakening factor");
-          depletion_density_change          = prm.get_double ("Depletion density change");
-          surface_solidus                   = prm.get_double ("Surface solidus");
-          depletion_solidus_change          = prm.get_double ("Depletion solidus change");
-          pressure_solidus_change           = prm.get_double ("Pressure solidus change");
-          compressibility                   = prm.get_double ("Solid compressibility");
+          forsterite_compressibility        = prm.get_double ("Solid forsterite compressibility");
+          fayalite_compressibility          = prm.get_double ("Solid forsterite compressibility");
           melt_compressibility              = prm.get_double ("Melt compressibility");
           include_melting_and_freezing      = prm.get_bool ("Include melting and freezing");
 
