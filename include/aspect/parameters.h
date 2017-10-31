@@ -314,6 +314,7 @@ namespace aspect
     double                         maximum_time_step;
     double                         reaction_time_step;
     unsigned int                   reaction_steps_per_advection_step;
+    double                         plasticity_diffusion;
     bool                           use_artificial_viscosity_smoothing;
     bool                           use_conduction_timestep;
     bool                           convert_to_years;

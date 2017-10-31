@@ -1770,8 +1770,8 @@ namespace aspect
       free_surface->execute ();
 
     // Compute the reactions of compositional fields and temperature in case of operator splitting.
-    if (parameters.use_operator_splitting)
-      compute_reactions ();
+    //if (parameters.use_operator_splitting)
+    //  compute_reactions ();
 
     switch (parameters.nonlinear_solver)
       {
@@ -1790,14 +1790,6 @@ namespace aspect
         case NonlinearSolver::iterated_IMPES:
         {
           solve_iterated_IMPES();
-
-
-
-          do
-            {
-
-                        if(c == introspection.compositional_index_for_name("strain_rate_invariant"))
-                          relative_composition_residual[c] = 0.0;
           break;
         }
 
