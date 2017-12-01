@@ -2016,8 +2016,8 @@ namespace aspect
               if (stokes_matrix_depends_on_solution() == true)
                 rebuild_stokes_matrix = rebuild_stokes_preconditioner = true;
 
-              // hack
-              compute_current_constraints ();
+              if (nonlinear_iteration == 0)// hack
+                compute_current_constraints ();
 
               assemble_stokes_system();
               build_stokes_preconditioner();

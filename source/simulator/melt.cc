@@ -87,7 +87,7 @@ namespace aspect
       const unsigned int N = melt_outputs->permeabilities.size();
       for (unsigned int q=0; q<N; ++q)
         {
-          K_D *= std::pow (melt_outputs->permeabilities[q] / melt_outputs->fluid_viscosities[q], 1./N);
+          K_D *= std::pow (std::max(melt_outputs->permeabilities[q], 0.0)  / melt_outputs->fluid_viscosities[q], 1./N);
           min_K_D = std::min(min_K_D, melt_outputs->permeabilities[q] / melt_outputs->fluid_viscosities[q]);
           max_K_D = std::max(max_K_D, melt_outputs->permeabilities[q] / melt_outputs->fluid_viscosities[q]);
         }
@@ -850,8 +850,14 @@ namespace aspect
 
       const double melting_rate         = material_model_outputs.reaction_terms[q_point][advection_field.compositional_variable];
       const double density              = material_model_outputs.densities[q_point];
-      const double current_phi          = material_model_inputs.composition[q_point][advection_field.compositional_variable];
-      const double divergence_u         = scratch.current_velocity_divergences[q_point];
+
+      // average divergence u over the cell
+      // TODO: do this outside of the loop over quadrature points
+      double divergence_u = 0.0;
+      const unsigned int N = material_model_inputs.position.size();
+      for (unsigned int i=0; i<N; ++i)
+        divergence_u += scratch.current_velocity_divergences[i] * 1./N;
+
       const double compressibility      = (this->get_material_model().is_compressible()
                                            ?
                                            material_model_outputs.compressibilities[q_point]
@@ -864,8 +870,7 @@ namespace aspect
       double melt_transport_RHS = melting_rate / density
                                   + divergence_u + compressibility * density * (current_u * gravity);
 
-      if (current_phi < this->get_melt_handler().melt_transport_threshold
-          && melting_rate < this->get_melt_handler().melt_transport_threshold)
+      if (!this->get_melt_handler().is_melt_cell(*material_model_inputs.cell))
         melt_transport_RHS = melting_rate / density;
 
       return melt_transport_RHS;
@@ -1029,12 +1034,27 @@ namespace aspect
 
             this->get_material_model().evaluate(in, out);
 
-//            const double K_D = dynamic_cast<const MaterialModel::MeltInterface<dim>*>(&this->get_material_model())->darcy_coefficient(in,out, this->get_melt_handler(), true);
-//            const double p_c_scale = std::sqrt(K_D / ref_K_D);
+            const double K_D = dynamic_cast<const MaterialModel::MeltInterface<dim>*>(&this->get_material_model())->darcy_coefficient(in,out,this->get_melt_handler(), true);
+            const double p_c_scale = std::sqrt(K_D / ref_K_D);
 
             MaterialModel::MeltOutputs<dim> *melt_outputs = out.template get_additional_output<MaterialModel::MeltOutputs<dim> >();
             Assert(melt_outputs != NULL, ExcMessage("Need MeltOutputs from the material model for computing the melt variables."));
             const FEValuesExtractors::Vector fluid_velocity_extractor = this->introspection().variable("fluid velocity").extractor_vector();
+
+            // average the porosity cell-wise, and make sure it is above a threshold (as done for the Darcy coefficient)
+            double phi = 1.0;
+            for (unsigned int q=0; q<n_q_points; ++q)
+              {
+                phi *= std::pow (std::max(0.0, porosity_values[q]), 1./n_q_points);
+              }
+
+            // use K_D without cutoff to compute u_f, and with cutoff to compute melt cell
+            const double K_D_no_cutoff = dynamic_cast<const MaterialModel::MeltInterface<dim>*>(&this->get_material_model())->darcy_coefficient(in,out,this->get_melt_handler(), false);
+            const double K_D_over_phi = (phi > 0
+                                         ?
+                                         K_D_no_cutoff / phi
+                                         :
+                                         0);
 
             for (unsigned int q=0; q<n_q_points; ++q)
               for (unsigned int i=0; i<dofs_per_cell; ++i)
@@ -1044,19 +1064,15 @@ namespace aspect
                                         fe_values[fluid_velocity_extractor].value(i,q) *
                                         fe_values.JxW(q);
 
-                  const double phi = std::max(0.0, porosity_values[q]);
-                  const double K_D = melt_outputs->permeabilities[q] / melt_outputs->fluid_viscosities[q];
-                  const double p_c_scale = std::sqrt(K_D / ref_K_D);
+                  //const double phi = std::max(0.0, porosity_values[q]);
+                  //const double K_D = melt_outputs->permeabilities[q] / melt_outputs->fluid_viscosities[q];
 
                   // u_f =  u_s - K_D (nabla p_f - rho_f g) / phi  or = 0
-                  if (phi > this->get_melt_handler().melt_transport_threshold
-
-//                      && p_c_scale > 0.0
-                     )
+                  if (p_c_scale > 0)
                     {
 
                       const Tensor<1,dim>  gravity = this->get_gravity_model().gravity_vector(in.position[q]);
-                      cell_vector(i) += (u_s_values[q] - K_D * (grad_p_f_values[q] - melt_outputs->fluid_densities[q]*gravity) / phi)
+                      cell_vector(i) += (u_s_values[q] - K_D_over_phi * (grad_p_f_values[q] - melt_outputs->fluid_densities[q]*gravity))
                                         * fe_values[fluid_velocity_extractor].value(i,q)
                                         * fe_values.JxW(q);
                     }
@@ -1148,10 +1164,6 @@ namespace aspect
             const double K_D = dynamic_cast<const MaterialModel::MeltInterface<dim>*>(&this->get_material_model())->darcy_coefficient(in,out,this->get_melt_handler(), true);
             const double p_c_scale = std::sqrt(K_D / ref_K_D);
 
-
-            MaterialModel::MeltOutputs<dim> *melt_outputs = out.template get_additional_output<MaterialModel::MeltOutputs<dim> >();
-            Assert(melt_outputs != NULL, ExcMessage("Need MeltOutputs from the material model for computing the melt variables."));
-
             for (unsigned int j=0; j<this->get_fe().base_element(this->introspection().base_elements.pressure).dofs_per_cell; ++j)
               {
                 const unsigned int pressure_idx
@@ -1165,7 +1177,7 @@ namespace aspect
                 const double phi = std::max(0.0, porosity_values[j]);
 
                 double p = p_f_values[j];
-                if (phi < 1.0-this->get_melt_handler().melt_transport_threshold)
+                if (p_c_scale > 0)
                   p = (p_c_scale*p_c_values[j] - (phi-1.0) * p_f_values[j]) / (1.0-phi);
 
                 distributed_vector(local_dof_indices[pressure_idx]) = p;
@@ -1358,7 +1370,7 @@ namespace aspect
 
     IndexSet nonzero_pc_dofs(this->introspection().index_sets.system_relevant_set.size());
 
-    const QGauss<dim> quadrature_formula(this->get_parameters().stokes_velocity_degree+1);
+    const QTrapez<dim> quadrature_formula;
     const UpdateFlags cell_update_flags = update_quadrature_points | update_values | update_gradients;
     const FiniteElement<dim> &fe = this->get_fe();
 
@@ -1368,8 +1380,7 @@ namespace aspect
       // find our "melt cells" by looking at K_D:
 
       const unsigned int n_compositional_fields = this->introspection().n_compositional_fields;
-      FEValues<dim>               finite_element_values(this->get_mapping(), fe, quadrature_formula,
-                                                        cell_update_flags);
+      FEValues<dim> finite_element_values(this->get_mapping(), fe, quadrature_formula, cell_update_flags);
 
       MaterialModel::MaterialModelInputs<dim> material_model_inputs(quadrature_formula.size(), n_compositional_fields);
       MaterialModel::MaterialModelOutputs<dim> material_model_outputs(quadrature_formula.size(), n_compositional_fields);
@@ -1407,35 +1418,6 @@ namespace aspect
             const bool is_melt_cell = (p_c_scale>0.0);
             is_melt_cell_vector[cell->active_cell_index()] = is_melt_cell;
           }
-
-      // now grow by one cell layer:
-      if (false)
-        {
-          const std::vector<bool> original_is_melt_cell_vector = is_melt_cell_vector;
-          const std::vector< std::set< typename Triangulation< dim >::active_cell_iterator > >
-          vertex_to_cell_map = GridTools::vertex_to_cell_map  (this->get_triangulation());
-
-          if (true)
-            for (auto cell = this->get_dof_handler().begin_active();
-                 cell != this->get_dof_handler().end();
-                 ++cell)
-              if (cell->is_locally_owned() && original_is_melt_cell_vector[cell->active_cell_index()])
-                {
-                  for (unsigned int v=0; v<GeometryInfo<dim>::vertices_per_cell; ++v)
-                    {
-                      const std::set<typename Triangulation< dim >::active_cell_iterator> cells = vertex_to_cell_map[cell->vertex_index(v)];
-                      for (typename std::set<typename Triangulation< dim >::active_cell_iterator>::iterator it = cells.begin();
-                           it != cells.end();
-                           ++it)
-                        {
-                          if (!is_melt_cell_vector[(*it)->active_cell_index()]
-                              && (*it)->is_locally_owned())
-                            std::cout << "growing " << (*it)->active_cell_index() << std::endl;
-                          is_melt_cell_vector[(*it)->active_cell_index()] = true;
-                        }
-                    }
-                }
-        }
     }
 
 
