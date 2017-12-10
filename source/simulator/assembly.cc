@@ -1150,7 +1150,7 @@ namespace aspect
     // then also work on possible face terms. if necessary, initialize
     // the material model data on faces
     for (unsigned int face_no=0; face_no<GeometryInfo<dim>::faces_per_cell; ++face_no)
-      if (cell->at_boundary(face_no))
+      if (true)
         {
           scratch.face_finite_element_values.reinit (cell, face_no);
 

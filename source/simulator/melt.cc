@@ -465,24 +465,49 @@ namespace aspect
       const unsigned int n_face_q_points = scratch.face_finite_element_values.n_quadrature_points;
       const unsigned int stokes_dofs_per_cell = data.local_dof_indices.size();
       const FEValuesExtractors::Scalar ex_p_f = introspection.variable("fluid pressure").extractor_scalar();
+      const FEValuesExtractors::Scalar ex_p_c = introspection.variable("compaction pressure").extractor_scalar();
+      const FEValuesExtractors::Vector ex_u = introspection.extractors.velocities;
       const unsigned int p_f_component_index = introspection.variable("fluid pressure").first_component_index;
       const unsigned int p_c_component_index = introspection.variable("compaction pressure").first_component_index;
 
       MaterialModel::MeltOutputs<dim> *melt_outputs = scratch.face_material_model_outputs.template get_additional_output<MaterialModel::MeltOutputs<dim> >();
       const double K_D = dynamic_cast<const MaterialModel::MeltInterface<dim>*>(&this->get_material_model())->darcy_coefficient(scratch.material_model_inputs, scratch.material_model_outputs, this->get_melt_handler(), true);
-
+      const double ref_K_D = dynamic_cast<const MaterialModel::MeltInterface<dim>*>(&this->get_material_model())->reference_darcy_coefficient();
+      const double p_c_scale = std::sqrt(K_D / ref_K_D);
 
       std::vector<double> grad_p_f(n_face_q_points);
-      this->get_melt_handler().boundary_fluid_pressure->fluid_pressure_gradient(
-        cell->face(face_no)->boundary_id(),
-        scratch.face_material_model_inputs,
-        scratch.face_material_model_outputs,
-#if DEAL_II_VERSION_GTE(9,0,0)
-        scratch.face_finite_element_values.get_normal_vectors(),
-#else
-        scratch.face_finite_element_values.get_all_normal_vectors(),
-#endif
-        grad_p_f);
+
+      bool melt_interface = false;
+
+      if(cell->face(face_no)->at_boundary() && !cell->has_periodic_neighbor(face_no))
+        {
+          this->get_melt_handler().boundary_fluid_pressure->fluid_pressure_gradient(
+            cell->face(face_no)->boundary_id(),
+            scratch.face_material_model_inputs,
+            scratch.face_material_model_outputs,
+    #if DEAL_II_VERSION_GTE(9,0,0)
+            scratch.face_finite_element_values.get_normal_vectors(),
+    #else
+            scratch.face_finite_element_values.get_all_normal_vectors(),
+    #endif
+            grad_p_f);
+        }
+      else if (false) //melt_interface)
+        {
+          // find out if we are at the interface between a region with and without melt
+          const typename DoFHandler<dim>::cell_iterator
+          neighbor = cell->neighbor_or_periodic_neighbor (face_no);
+          // note: "neighbor" defined above is NOT active_cell_iterator, so this includes cells that are refined
+          // for example: cell with periodic boundary.
+          Assert (neighbor.state() == IteratorState::valid,
+                  ExcInternalError());
+          melt_interface = this->get_melt_handler().is_melt_cell(cell) && (!this->get_melt_handler().is_melt_cell(neighbor));
+        }
+
+      // we have to assmeble if we are either at the boundary of the domain,
+      // or if we are at the boundary between a melt cell and a not melt cell
+      if(!cell->face(face_no)->at_boundary() && !melt_interface)
+        return;
 
       for (unsigned int q=0; q<n_face_q_points; ++q)
         {
@@ -503,9 +528,31 @@ namespace aspect
                                                 * (scratch.face_finite_element_values.normal_vector(q) * gravity)
                                                 - grad_p_f[q])
                                                * scratch.face_finite_element_values.JxW(q));
+
+                  if (false) //melt_interface)
+                    for (unsigned int j=0, j_stokes=0; j_stokes<stokes_dofs_per_cell; /*increment at end of loop*/)
+                      {
+                        const unsigned int component_index_j = fe.system_to_component_index(j).first;
+
+                        if (is_velocity_or_pressures(introspection,p_c_component_index,p_f_component_index,component_index_j))
+                          {
+                            data.local_matrix(i_stokes,j_stokes)
+                            += (
+                                 p_c_scale * scratch.face_finite_element_values[ex_p_c].value(j, q)
+                                 * (scratch.face_finite_element_values[ex_u].value(i, q) * scratch.face_finite_element_values.normal_vector(q))
+                               )
+                               * scratch.finite_element_values.JxW(q);
+
+                            ++j_stokes;
+                          }
+                        ++j;
+                      }
+
                   ++i_stokes;
                 }
               ++i;
+
+
             }
         }
     }
