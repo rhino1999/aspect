@@ -229,7 +229,7 @@ namespace aspect
         std::vector<double> activation_energies_dislocation;
         std::vector<double> activation_volumes_dislocation;
 
-        std::vector<double> angles_internal_friction;
+        std::vector<double> friction_coefficient;
         std::vector<double> cohesions;
         std::vector<double> exponents_stress_limiter;
 

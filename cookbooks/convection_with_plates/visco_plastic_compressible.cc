@@ -231,7 +231,7 @@ namespace aspect
           // Calculate viscous stress
           double viscous_stress = 2. * viscosity_pre_yield * edot_ii;
 
-          double phi = angles_internal_friction[j];
+          double phi = friction_coefficient[j];
 
           // Passing cohesions to a new variable
           double coh = cohesions[j];
@@ -239,10 +239,10 @@ namespace aspect
           // Calculate Drucker Prager yield strength (i.e. yield stress)
           double yield_strength = ( (dim==3)
                                     ?
-                                    ( 6.0 * coh * std::cos(phi) + 2.0 * std::max(pressure,0.0) * std::sin(phi) )
-                                    / ( std::sqrt(3.0) * (3.0 + std::sin(phi) ) )
+                                    (6.0 * coh + 2.0 * std::max(pressure,0.0) * phi)
+                                    / (std::sqrt(3.0) * (3.0 + phi))
                                     :
-                                    coh * std::cos(phi) + std::max(pressure,0.0) * std::sin(phi) );
+                                    coh + std::max(pressure,0.0) * phi);
 
           // If the viscous stress is greater than the yield strength, rescale the viscosity back to yield surface
           double viscosity_drucker_prager;
@@ -361,6 +361,9 @@ namespace aspect
               // of compositional field viscosities is consistent with any averaging scheme.
               out.viscosities[i] = average_value(composition, composition_viscosities, viscosity_averaging);
 
+              // add depth dependence
+              if (this->get_geometry_model().depth(in.position[i]) > 6.6e5)
+                out.viscosities[i] *= 30.0;
             }
 
           out.densities[i] = density;
@@ -402,7 +405,7 @@ namespace aspect
               for (unsigned int j=0; j < volume_fractions.size(); ++j)
                 {
                   C   += volume_fractions[j] * cohesions[j];
-                  phi += volume_fractions[j] * angles_internal_friction[j];
+                  phi += volume_fractions[j] * friction_coefficient[j];
                 }
               plastic_out->cohesions[i] = C;
               // convert radians to degrees
@@ -560,12 +563,12 @@ namespace aspect
 
 
           // Plasticity parameters
-          prm.declare_entry ("Angles of internal friction", "0",
+          prm.declare_entry ("Friction coefficients", "0",
                              Patterns::List(Patterns::Double(0)),
-                             "List of angles of internal friction, $\\phi$, for background material and compositional fields, "
+                             "List of friction coefficients, $\\mu$, for background material and compositional fields, "
                              "for a total of N+1 values, where N is the number of compositional fields. "
                              "For a value of zero, in 2D the von Mises criterion is retrieved. "
-                             "Angles higher than 30 degrees are harder to solve numerically. Units: degrees.");
+                             "Coefficients higher than 0.5 degrees are harder to solve numerically. Units: none.");
           prm.declare_entry ("Cohesions", "1e20",
                              Patterns::List(Patterns::Double(0)),
                              "List of cohesions, $C$, for background material and compositional fields, "
@@ -691,12 +694,9 @@ namespace aspect
                                                                                    n_fields,
                                                                                    "Activation volumes for dislocation creep");
           // Plasticity parameters
-          angles_internal_friction = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Angles of internal friction"))),
+          friction_coefficient = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Angles of internal friction"))),
                                                                              n_fields,
-                                                                             "Angles of internal friction");
-          // Convert angles from degrees to radians
-          for (unsigned int i = 0; i<n_fields; ++i)
-            angles_internal_friction[i] *= numbers::PI/180.0;
+                                                                             "Friction Coefficients");
           cohesions = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Cohesions"))),
                                                               n_fields,
                                                               "Cohesions");

@@ -1,0 +1,194 @@
+# A cookbook for convection with plates. 
+
+# We load the shared library that includes the material model we want to use. 
+set Additional shared libraries            = ./libplates.so
+
+set Dimension                              = 2
+set Use years in output instead of seconds = true
+set End time                               = 1e10
+set Linear solver tolerance                = 5e-6
+set Output directory                       = nakagawa_2015
+set Pressure normalization                 = no
+
+# We use a nonlinear solver that solves the temperature and composition system 
+# once, and then iterates over the Stokes system. 
+# At the moment, if the solver does not converge after 10 iterations, we just go 
+# to the next time step (to make the model run fast). For production runs, the 
+# number of nonlinear iterations should be set to a larger number (on the order 
+# of 100). 
+set Nonlinear solver scheme                = iterated Stokes
+set Max nonlinear iterations               = 10
+
+set CFL number                             = 0.5
+set Number of cheap Stokes solver steps    = 500
+set Adiabatic surface temperature          = 1600
+
+
+subsection Free surface
+#  set Free surface stabilization theta = 0.95
+end
+
+# We use one compositional field that represents the lithospheric plates. 
+# Below in the material model, we can assign specific material properties to it. 
+subsection Compositional fields
+  set Number of fields = 1
+  set Names of fields = continent
+end
+
+
+# This material model is the same as the visco-plastic model in the main version of ASPECT, 
+# except that it is compressible. All material parameters can be given as a list: If only one 
+# parameter is given, it applies to all compositional fields, if two comma-separated values
+# are given, the first one is for the background mantle and the second one for the lithosphere. 
+subsection Material model
+  set Model name = visco plastic compressible
+
+  subsection Visco Plastic
+
+    # Reference temperature and viscosity
+    set Reference temperature = 293
+    set Reference viscosity = 1.4e21
+    
+    # The minimum strain-rate helps limit large viscosities values that arise
+    # as the strain-rate approaches zero.
+    # The reference strain-rate is used on the first non-linear iteration
+    # of the first time step when the velocity has not been determined yet. 
+    set Minimum strain rate = 1.e-22
+    set Reference strain rate = 1.e-16
+
+    # Limit the viscosity with minimum and maximum values
+    set Minimum viscosity = 1.4e18
+    set Maximum viscosity = 1.4e26
+
+    set Thermal diffusivities = 7e-7, 7e-7
+    set Heat capacities       =        1250
+    set Densities             =        3300,        3300
+    set Thermal expansivities =        2e-5
+
+    # Harmonic viscosity averaging
+    set Viscosity averaging scheme = harmonic
+
+    # We use a diffusion-creep rheology. 
+    set Viscous flow law = diffusion
+    set Activation volumes for diffusion creep = 2.52e-6  #E + E' d is 520 kJ/mol at the CMB
+    set Activation energies for diffusion creep = 290.e3
+    set Prefactors for diffusion creep         = 4e-19
+
+    # Plasticity parameters. The angle of internal friction is given in degrees, the cohesion in Pa. 
+    set Angles of internal friction =   0.04 #0.02, 0.04, 0.08, 0.12, and 0.2 (* 180/pi?)
+    set Cohesions                   =   10.e6
+
+  end
+  set Material averaging = harmonic average
+end
+
+# The geometry is a spherical shell with the inner and 
+# outer radius of the Earth's mantle. 
+subsection Geometry model
+  set Model name = spherical shell
+
+  subsection Spherical shell
+    set Inner radius  = 3481000
+    set Outer radius  = 6336000
+  end
+end
+
+subsection Adiabatic conditions model
+  set Model name = initial profile
+end
+
+
+# The gravity model reads an ascii data file generated with BurnMan.
+subsection Gravity model
+  set Model name = radial constant
+  subsection Radial constant
+    set Magnitude = 9.8
+  end
+end
+
+
+# The top and bottom boundaries are free slip, so we have to choose a method
+# for removing the nullspace of the solution (otherwise, material could freely 
+# rotate in the manntle). We choose to have a zero angular momentum. 
+subsection Model settings
+  set Tangential velocity boundary indicators = top, bottom
+  set Remove nullspace                        = angular momentum
+
+  set Fixed temperature boundary indicators   = top, bottom
+end
+
+# As boundary conditions, we choose a constant temperature at the surface and 
+# at the CMB. 
+subsection Boundary temperature model
+  set List of model names = spherical constant
+  subsection Spherical constant
+    set Inner temperature = 3300 
+    set Outer temperature = 300
+  end
+end
+
+# The initial temperature is an adiabatic profile, which is
+# taken from the adabatic conditions model. 
+# In addition to the adiabatic profile, there are thermal boundary 
+# layers at the surface and the core-mantle boundary, and we add 
+# some perturbations to initiate the flow.
+subsection Initial temperature model
+  set List of model names = adiabatic, function
+
+  subsection Adiabatic
+    set Age top boundary layer = 5e8
+    set Age bottom boundary layer = 5e8
+  end
+
+  subsection Function
+    set Function constants = A=1, r=3500000, b=1000000
+    set Function expression = A*exp(-(x*x+(y-r)*(y-r))/(b*b)) + A*exp(-(x*x+(y+r)*(y+r))/(b*b)) - A*exp(-((x-r)*(x-r)+y*y)/(b*b)) - A*exp(-((x+r)*(x+r)+y*y)/(b*b))
+  end
+end
+
+# We also have to set an initial comdition for the compositional field that
+# represents the lithosphere. Here, we assume a layer at the surface with a 
+# thickness of 150 km. 
+subsection Initial composition model
+  set Model name = function
+  subsection Function
+    set Coordinate system = depth
+    set Function expression = if(depth>150000,0,1)
+    set Variable names = depth,x
+  end
+end
+
+# We need at least 6 refinement leverls to properly resolve the lithosphere. 
+subsection Mesh refinement
+  set Initial adaptive refinement        = 0
+  set Initial global refinement          = 6
+  set Strategy                           = minimum refinement function
+  set Time steps between mesh refinement = 0
+end
+
+
+# We include adiabatic heating and shear heating in the model, 
+# as it is a compressible model.
+subsection Heating model
+  set List of model names = adiabatic heating, shear heating
+
+  subsection Adiabatic heating
+    set Use simplified adiabatic heating = true
+  end
+end
+
+# 
+subsection Postprocess
+  set List of postprocessors = visualization, velocity statistics, temperature statistics, heat flux statistics
+
+  subsection Visualization
+    set Output format                 = vtu
+    set Time between graphical output = 0
+    set Number of grouped files       = 0
+    set List of output variables      = material properties, gravity, adiabat, nonadiabatic temperature, nonadiabatic pressure, stress, strain rate
+  end
+end
+
+subsection Checkpointing
+  set Time between checkpoint  = 1800
+end
