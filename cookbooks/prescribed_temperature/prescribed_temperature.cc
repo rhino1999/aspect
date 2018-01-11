@@ -4,6 +4,8 @@
 #include <aspect/global.h>
 #include <aspect/simulator_signals.h>
 #include <aspect/geometry_model/interface.h>
+#include <aspect/adiabatic_conditions/interface.h>
+#include <aspect/initial_temperature/interface.h>
 
 namespace aspect
 {
@@ -81,12 +83,12 @@ namespace aspect
                         // we get time passed as seconds (always) but may want
                         // to reinterpret it in years
                         const Point<dim> p = fe_values.quadrature_point(q);
-                        if (simulator_access.get_geometry_model().depth(p) > 200000)
+                        if (simulator_access.get_initial_temperature_manager().initial_temperature(p) > 1613.0)
                           {
                             // Add a constraint of the form dof[q] = T
                             // to the list of constraints.
                             current_constraints.add_line (local_dof_indices[q]);
-                            current_constraints.set_inhomogeneity (local_dof_indices[q], 1700);
+                            current_constraints.set_inhomogeneity (local_dof_indices[q], simulator_access.get_adiabatic_conditions().temperature(p));
                           }
                       }
                   }

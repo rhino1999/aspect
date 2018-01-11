@@ -1,8 +1,10 @@
 ## First we set up a unit length box model with uniform everything.
 set Dimension   = 2
 set End time    = 1e8
+set Adiabatic surface temperature = 1600
+set Maximum time step = 1e7
 
-# Load the signal library.
+# Load the shared library that prescribes the temperature DoFs.
 set Additional shared libraries = ./libprescribed_temperature.so
 
 subsection Geometry model
@@ -16,16 +18,24 @@ end
 
 subsection Initial temperature model
   set Model name = function
+  subsection Function
+    set Function expression = 273 + if (y+0.1*x<250000,1500,0)
+  end
+end
+
+subsection Boundary temperature model
+  set Model name = initial temperature
 end
 
 subsection Model settings
   set Zero velocity boundary indicators = top, bottom, left, right
+  set Fixed temperature boundary indicators = top
 end
 
 subsection Gravity model
   set Model name = vertical
   subsection Vertical
-    set Magnitude = 0
+    set Magnitude = 10
   end
 end
 
@@ -40,6 +50,10 @@ end
 
 subsection Postprocess
   set List of postprocessors = visualization
+  subsection Visualization
+    set List of output variables = material properties
+    set Time between graphical output = 1e6
+  end
 end
 
 ## Turn prescribed velocities on
