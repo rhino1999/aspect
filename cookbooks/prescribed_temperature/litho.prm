@@ -1,0 +1,46 @@
+## First we set up a unit length box model with uniform everything.
+set Dimension   = 2
+set End time    = 1e8
+
+# Load the signal library.
+set Additional shared libraries = ./libprescribed_temperature.so
+
+subsection Geometry model
+  set Model name = box
+
+  subsection Box
+    set X extent = 410000
+    set Y extent = 410000
+  end
+end
+
+subsection Initial temperature model
+  set Model name = function
+end
+
+subsection Model settings
+  set Zero velocity boundary indicators = top, bottom, left, right
+end
+
+subsection Gravity model
+  set Model name = vertical
+  subsection Vertical
+    set Magnitude = 0
+  end
+end
+
+subsection Material model
+  set Model name = simple
+end
+
+subsection Mesh refinement
+  set Initial global refinement = 4
+  set Initial adaptive refinement = 0
+end
+
+subsection Postprocess
+  set List of postprocessors = visualization
+end
+
+## Turn prescribed velocities on
+set Prescribe internal temperatures = true
