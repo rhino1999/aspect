@@ -1,8 +1,7 @@
-# TODO
-# read in compositions with ASCII data file
-# add radiogenic heat production
+# Load the shared libraries that prescribe the temperature DoFs, the initial condition and the termination criterion. 
+set Additional shared libraries = ./libprescribed_temperature.so, libinitial_temperature.so, libsteady_temperature.so
 
-## First we set up a unit length box model with uniform everything.
+# We use the advection only solver scheme, because we are only intreseted in the temperature evolution. 
 set Dimension   = 3
 set End time    = 1e10
 set Adiabatic surface temperature = 1613
@@ -11,7 +10,8 @@ set Nonlinear solver scheme = Advection only
 set Use conduction timestep = true
 
 # As we use the advection only solver scheme, we have to prescribe 
-# the Stokes solution. Here we set all velocities to zero. 
+# the Stokes solution. Here we set all velocities to zero, and the pressure
+# to the hydrotstaic pressure. 
 subsection Prescribed Stokes solution
   set Model name = function velocity adiabatic pressure
   subsection Velocity function
@@ -19,15 +19,24 @@ subsection Prescribed Stokes solution
   end
 end
 
-# TODO: add radiogenic heat production
+# The radiogenic heat production is intriduced by useing the compositional heating plugin. 
+# It lets us define a constant heating rate for each composition. 
 subsection Heating model
-  set List of model names = adiabatic heating
+  set List of model names = adiabatic heating, compositional heating
+  subsection Compositional heating
+    # List of heat production per unit volume values for background and
+    # compositional fields, for a total of N+1 values, where N is the number
+    # of compositional fields. Units: $W/m^3$.
+    set Compositional heating values                          = 0, 9e-7, 0 # asthenosphere, crust, lithosphere 
+
+    # List of integers, detailing for each compositional field if it should be
+    # included in the averaging scheme when the heat production is computed
+    # (if 1) or not (if 0).
+    set Use compositional field for heat production averaging = 1, 1, 1
+  end
 end
 
-
-# Load the shared library that prescribes the temperature DoFs.
-set Additional shared libraries = ./libprescribed_temperature.so, libinitial_temperature.so, libsteady_temperature.so
-
+# The geometry is a 3d cube with a side length of 410 km. 
 subsection Geometry model
   set Model name = box
 
@@ -38,17 +47,28 @@ subsection Geometry model
   end
 end
 
+# We use an adiabatic temperature profile, and add a perturbation that represents a plume. 
+# This would be the place to read in an ascii data file with the initial lithospheric thickness
+# (instead of just using an adiabatic profile), and then the plume can be described using the
+# function plugin. 
 subsection Initial temperature model
-  set Model name = plume
+  set List of model names = plume, function
   subsection Plume
     set Age top boundary layer = 1e8
     set Radius                 = 50000
     set Amplitude              = 250
     set Position               = coordinates
     set Midpoint coordinates   = 200000, 200000, 250000
+    subsection Function
+      set Function expression = 0; 0
+    end
+  end
+  subsection Function
+    set Function expression = 0
   end
 end
 
+# We prescibe the temperature at the top boundary. 
 subsection Boundary temperature model
   set Model name = constant
   subsection Constant
@@ -68,12 +88,34 @@ subsection Gravity model
   end
 end
 
+# We have two compositional fields, representing the crust and the lithosphere. 
+subsection Compositional fields
+  set Number of fields = 2
+  set Names of fields  = crust, lithosphere
+end
+
+# The inital distribution of these compositional fields is read in through an ascii data file. 
+subsection Initial composition model
+  set Model name = ascii data
+  subsection Ascii data model
+    set Data directory = $ASPECT_SOURCE_DIR/data/initial-composition/ascii-data/prescribed_temperature/
+    set Data file name = crust_lithosphere_depth.txt
+  end
+end
+
 subsection Material model
-  set Model name = simple
+  set Model name = multicomponent
+
+  # first entry is background mantle, values are from Naliboff & Buiter, 2015
+  subsection Multicomponent
+    set Densities = 3300, 2800, 3250
+    set Specific heats = 750 
+    set Thermal conductivities = 4.7, 2.5, 2.25 # asthenosphere, crust, lithosphere 
+  end
 end
 
 subsection Mesh refinement
-  set Initial global refinement = 4
+  set Initial global refinement = 5
   set Initial adaptive refinement = 0
   set Time steps between mesh refinement = 0
 end
@@ -81,14 +123,18 @@ end
 subsection Postprocess
   set List of postprocessors = visualization, temperature statistics
   subsection Visualization
-    set List of output variables = material properties, heat flux map
+    set List of output variables = material properties, heat flux map, heating
     set Time between graphical output = 1e6
+    subsection Material properties
+       set List of material properties = density,thermal expansivity,specific heat,viscosity,thermal diffusivity
+    end
   end
 end
 
 ## Turn prescribed velocities on
 set Prescribe internal temperatures = true
 
+# We terminate the model when the temperature does not change anymore. 
 subsection Termination criteria
   set Termination criteria      = steady state temperature
   subsection Steady state temperature
