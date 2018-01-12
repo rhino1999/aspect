@@ -1,10 +1,10 @@
-# TODO: use advection only solver scheme and set function for Stokes solution
-# use initial temperature plugin
+# TODO
 # read in compositions with ASCII data file
 # Define stopping criterion for the model (based on steady state)
 # 3D
 # new prescribed Stokes plugin with adiabatic pressure
 # add radiogenic heat production
+# new Termination criteria: steady-state temperature
 
 ## First we set up a unit length box model with uniform everything.
 set Dimension   = 2
@@ -48,6 +48,10 @@ subsection Initial temperature model
   set Model name = plume
   subsection Plume
     set Age top boundary layer = 1e8
+    set Radius                 = 50000
+    set Amplitude              = 250
+    set Position               = coordinates
+    set Midpoint coordinates   = 200000, 250000
   end
 end
 
@@ -75,8 +79,9 @@ subsection Material model
 end
 
 subsection Mesh refinement
-  set Initial global refinement = 4
+  set Initial global refinement = 5
   set Initial adaptive refinement = 0
+  set Time steps between mesh refinement = 0
 end
 
 subsection Postprocess

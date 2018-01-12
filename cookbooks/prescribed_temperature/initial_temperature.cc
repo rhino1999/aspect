@@ -213,9 +213,7 @@ namespace aspect
       else
         AssertThrow(false, ExcNotImplemented());
 
-      const double perturbation = (mid_point.distance(position) < radius) ? amplitude
-                                  : 0.0;
-
+      const double perturbation = amplitude * std::exp(-(std::pow(mid_point.distance(position),2)/(2.0*radius*radius)));
 
       // add the subadiabaticity
       const double zero_depth = 0.174;
