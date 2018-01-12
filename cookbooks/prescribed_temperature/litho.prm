@@ -1,11 +1,11 @@
 ## First we set up a unit length box model with uniform everything.
 set Dimension   = 2
-set End time    = 1e8
+set End time    = 1e10
 set Adiabatic surface temperature = 1600
 set Maximum time step = 1e7
 
 # Load the shared library that prescribes the temperature DoFs.
-set Additional shared libraries = ./libprescribed_temperature.so
+set Additional shared libraries = ./libprescribed_temperature.so, libinitial_temperature.so
 
 subsection Geometry model
   set Model name = box
@@ -17,14 +17,17 @@ subsection Geometry model
 end
 
 subsection Initial temperature model
-  set Model name = function
-  subsection Function
-    set Function expression = 273 + if (y+0.1*x<250000,1500,0)
+  set Model name = plume
+  subsection Plume
+    set Age top boundary layer = 1e8
   end
 end
 
 subsection Boundary temperature model
-  set Model name = initial temperature
+  set Model name = constant
+  subsection Constant
+    set Boundary indicator to temperature mappings = top: 273
+  end
 end
 
 subsection Model settings

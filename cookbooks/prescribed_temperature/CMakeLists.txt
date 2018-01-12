@@ -37,3 +37,9 @@ PROJECT(${TARGET})
 
 ADD_LIBRARY(${TARGET} SHARED prescribed_temperature.cc)
 ASPECT_SETUP_PLUGIN(${TARGET})
+
+SET(TARGET "initial_temperature")
+PROJECT(${TARGET})
+
+ADD_LIBRARY(${TARGET} SHARED initial_temperature.h initial_temperature.cc)
+ASPECT_SETUP_PLUGIN(${TARGET})
