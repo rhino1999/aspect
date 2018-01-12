@@ -58,7 +58,7 @@ namespace aspect
    */
   template <int dim>
   void constrain_internal_temperatures (const SimulatorAccess<dim> &simulator_access,
-                                      ConstraintMatrix &current_constraints)
+                                        ConstraintMatrix &current_constraints)
   {
     if (prescribe_internal_temperatures)
       {
@@ -88,7 +88,7 @@ namespace aspect
 
                     // If we're on one of the velocity DOFs
                     if (t_idx ==
-                         simulator_access.introspection().component_indices.temperature)
+                        simulator_access.introspection().component_indices.temperature)
                       {
                         // we get time passed as seconds (always) but may want
                         // to reinterpret it in years
