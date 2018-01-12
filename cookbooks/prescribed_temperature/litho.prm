@@ -1,8 +1,36 @@
+# TODO: use advection only solver scheme and set function for Stokes solution
+# use initial temperature plugin
+# read in compositions with ASCII data file
+# Define stopping criterion for the model (based on steady state)
+# 3D
+# new prescribed Stokes plugin with adiabatic pressure
+# add radiogenic heat production
+
 ## First we set up a unit length box model with uniform everything.
 set Dimension   = 2
 set End time    = 1e10
-set Adiabatic surface temperature = 1600
+set Adiabatic surface temperature = 1613
 set Maximum time step = 1e7
+set Nonlinear solver scheme = Advection only
+set Use conduction timestep = true
+
+# As we use the advection only solver scheme, we have to prescribe 
+# the Stokes solution. Here we set all velocities to zero. 
+subsection Prescribed Stokes solution
+  set Model name = function
+  subsection Pressure function
+    set Function expression = 3300 * 10 * y  
+  end
+  subsection Velocity function
+    set Function expression = 0;0
+  end
+end
+
+# TODO: add radiogenic heat production
+subsection Heating model
+  set List of model names = adiabatic heating
+end
+
 
 # Load the shared library that prescribes the temperature DoFs.
 set Additional shared libraries = ./libprescribed_temperature.so, libinitial_temperature.so

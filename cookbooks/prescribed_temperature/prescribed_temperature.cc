@@ -14,6 +14,10 @@ namespace aspect
   // Global variables (to be set by parameters)
   bool prescribe_internal_temperatures;
 
+  // The temperature of the lithospere-asthenosphere boundary
+  // (above which we want to fix the temperature)
+  double LAB_temperature;
+
   /**
    * Declare additional parameters.
    */
@@ -22,14 +26,20 @@ namespace aspect
   {
     prm.declare_entry ("Prescribe internal temperatures", "false",
                        Patterns::Bool (),
-                       "Whether or not to use any prescribed internal velocities. "
-                       "Locations in which to prescribe velocities are defined "
-                       "in section ``Prescribed velocities/Indicator function'' "
-                       "and the velocities are defined in section ``Prescribed "
-                       "velocities/Velocity function''. Indicators are evaluated "
+                       "Whether or not to use any prescribed internal temperature. "
+                       "Locations in which to prescribe temperatures are defined "
+                       "by their initial temperature (see parameter 'LAB temperature'). "
+                       "Indicators are evaluated "
                        "at the center of each cell, and all DOFs associated with "
-                       "the specified velocity component at the indicated cells "
+                       "the specified temperature component at the indicated cells "
                        "are constrained."
+                      );
+    prm.declare_entry ("LAB temperature", "1613.0",
+                       Patterns::Double (0),
+                       "The temperature of the lithosphere-asthenosphere boundary. "
+                       "Everywhere where the initial temperature is higher than this value, "
+                       "it is fixed to its initial value in case we prescibe internal "
+                       "temperatures. "
                       );
 
   }
@@ -88,7 +98,7 @@ namespace aspect
                             // Add a constraint of the form dof[q] = T
                             // to the list of constraints.
                             current_constraints.add_line (local_dof_indices[q]);
-                            current_constraints.set_inhomogeneity (local_dof_indices[q], simulator_access.get_adiabatic_conditions().temperature(p));
+                            current_constraints.set_inhomogeneity (local_dof_indices[q], simulator_access.get_initial_temperature_manager().initial_temperature(p));
                           }
                       }
                   }
