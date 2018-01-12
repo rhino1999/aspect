@@ -2,7 +2,6 @@
 # read in compositions with ASCII data file
 # Define stopping criterion for the model (based on steady state)
 # 3D
-# new prescribed Stokes plugin with adiabatic pressure
 # add radiogenic heat production
 # new Termination criteria: steady-state temperature
 
@@ -17,10 +16,7 @@ set Use conduction timestep = true
 # As we use the advection only solver scheme, we have to prescribe 
 # the Stokes solution. Here we set all velocities to zero. 
 subsection Prescribed Stokes solution
-  set Model name = function
-  subsection Pressure function
-    set Function expression = 3300 * 10 * y  
-  end
+  set Model name = function velocity adiabatic pressure
   subsection Velocity function
     set Function expression = 0;0
   end
@@ -33,7 +29,7 @@ end
 
 
 # Load the shared library that prescribes the temperature DoFs.
-set Additional shared libraries = ./libprescribed_temperature.so, libinitial_temperature.so
+set Additional shared libraries = ./libprescribed_temperature.so, libinitial_temperature.so, libsteady_temperature.so
 
 subsection Geometry model
   set Model name = box
@@ -85,7 +81,7 @@ subsection Mesh refinement
 end
 
 subsection Postprocess
-  set List of postprocessors = visualization
+  set List of postprocessors = visualization, temperature statistics
   subsection Visualization
     set List of output variables = material properties
     set Time between graphical output = 1e6
@@ -94,3 +90,11 @@ end
 
 ## Turn prescribed velocities on
 set Prescribe internal temperatures = true
+
+subsection Termination criteria
+  set Termination criteria      = steady state temperature
+  subsection Steady state temperature
+    set Maximum relative deviation = 0.0001
+    set Time in steady state       = 3e7
+  end
+end
