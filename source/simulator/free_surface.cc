@@ -185,6 +185,18 @@ namespace aspect
   {
     prm.enter_subsection ("Free surface");
     {
+      prm.declare_entry("Surface nodes velocity", "free surface",
+                        Patterns::Selection("free surface|function"),
+                        "A selection that allows to advect surface nodes "
+                        "either with the flow velocity, or some other "
+                        "prescribed velocity.");
+
+      prm.enter_subsection("Function");
+        {
+        Functions::ParsedFunction<dim>::declare_parameters (prm, dim);
+        }
+      prm.leave_subsection();
+
       prm.declare_entry("Free surface stabilization theta", "0.5",
                         Patterns::Double(0,1),
                         "Theta parameter described in Kaus et. al. 2010. "
@@ -244,6 +256,35 @@ namespace aspect
         advection_direction = SurfaceAdvection::vertical;
       else
         AssertThrow(false, ExcMessage("The surface velocity projection must be ``normal'' or ``vertical''."));
+
+      std::string surface_velo = prm.get("Surface nodes velocity");
+
+      if ( surface_velo == "free surface")
+        surface_velocity = SurfaceVelocity::free_surface;
+      else if ( surface_velo == "function")
+        surface_velocity = SurfaceVelocity::function;
+      else
+        AssertThrow(false, ExcMessage("The surface nodes velocity must be ``free surface'' or ``function''."));
+
+      prm.enter_subsection("Function");
+    {
+      try
+      {
+          function.reset (new Functions::ParsedFunction<dim>(dim));
+          function->parse_parameters (prm);
+      }
+      catch (...)
+      {
+          std::cerr << "ERROR: FunctionParser failed to parse\n"
+              << "\t'Free surface.Function'\n"
+              << "with expression\n"
+              << "\t'" << prm.get("Function expression") << "'\n"
+              << "More information about the cause of the parse error \n"
+              << "is shown below.\n";
+          throw;
+      }
+    }
+      prm.leave_subsection();
 
 
       // Create the list of tangential mesh movement boundary indicators
@@ -338,15 +379,15 @@ namespace aspect
 
     // Zero out the displacement for the traction boundaries
     // if the boundary is not in the set of tangential mesh boundaries
-    for (std::map<types::boundary_id, std::pair<std::string, std::string> >::const_iterator p = sim.parameters.prescribed_traction_boundary_indicators.begin();
-         p != sim.parameters.prescribed_traction_boundary_indicators.end(); ++p)
-      {
-        if (tangential_mesh_boundary_indicators.find(p->first) == tangential_mesh_boundary_indicators.end())
-          {
-            VectorTools::interpolate_boundary_values (free_surface_dof_handler, p->first,
-                                                      ZeroFunction<dim>(dim), mesh_displacement_constraints);
-          }
-      }
+//    for (std::map<types::boundary_id, std::pair<std::string, std::string> >::const_iterator p = sim.parameters.prescribed_traction_boundary_indicators.begin();
+//         p != sim.parameters.prescribed_traction_boundary_indicators.end(); ++p)
+//      {
+//        if (tangential_mesh_boundary_indicators.find(p->first) == tangential_mesh_boundary_indicators.end())
+//          {
+//            VectorTools::interpolate_boundary_values (free_surface_dof_handler, p->first,
+//                                                      ZeroFunction<dim>(dim), mesh_displacement_constraints);
+//          }
+//      }
 
     sim.signals.pre_compute_no_normal_flux_constraints(sim.triangulation);
     // Make the no flux boundary constraints for boundaries with tangential mesh boundaries
@@ -373,7 +414,16 @@ namespace aspect
     // For the free surface indicators we constrain the displacement to be v.n
     LinearAlgebra::Vector boundary_velocity;
     boundary_velocity.reinit(mesh_locally_owned, mesh_locally_relevant, sim.mpi_communicator);
-    project_velocity_onto_boundary( boundary_velocity );
+    if (surface_velocity == SurfaceVelocity::free_surface)
+      project_velocity_onto_boundary( boundary_velocity );
+    else if (surface_velocity == SurfaceVelocity::function)
+      for (std::set<types::boundary_id>::const_iterator p = sim.parameters.free_surface_boundary_indicators.begin();
+          p != sim.parameters.free_surface_boundary_indicators.end(); ++p)
+        {
+          function->set_time(sim.time);
+          VectorTools::interpolate_boundary_values (free_surface_dof_handler, *p,
+                                                    *function, mesh_displacement_constraints);
+        }
 
     // now insert the relevant part of the solution into the mesh constraints
     IndexSet constrained_dofs;

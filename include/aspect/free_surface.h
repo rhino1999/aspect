@@ -222,6 +222,25 @@ namespace aspect
        */
       typename SurfaceAdvection::Direction advection_direction;
 
+      /**
+       * A struct for holding information about how to advect the free surface.
+       */
+      struct SurfaceVelocity
+      {
+        enum Type { free_surface, function };
+      };
+
+      /**
+       * Stores whether to advect the free surface in the normal direction
+       * or the direction of the local vertical.
+       */
+      typename SurfaceVelocity::Type surface_velocity;
+
+      /**
+       * A function object controlling the boundary mesh velocity.
+       */
+      std_cxx11::unique_ptr<Functions::ParsedFunction<dim> > function;
+
 
       /**
        * A set of boundary indicators that denote those boundaries that are
