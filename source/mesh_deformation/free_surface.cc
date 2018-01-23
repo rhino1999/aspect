@@ -19,8 +19,8 @@
  */
 
 
+#include <aspect/mesh_deformation/free_surface.h>
 #include <aspect/simulator.h>
-#include <aspect/free_surface.h>
 #include <aspect/global.h>
 #include <aspect/simulator/assemblers/interface.h>
 #include <aspect/melt.h>

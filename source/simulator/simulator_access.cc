@@ -20,7 +20,7 @@
 
 
 #include <aspect/simulator.h>
-#include <aspect/free_surface.h>
+#include <aspect/mesh_deformation/free_surface.h>
 
 namespace aspect
 {

@@ -27,7 +27,7 @@
 #include <aspect/simulator/assemblers/interface.h>
 #include <aspect/melt.h>
 #include <aspect/newton.h>
-#include <aspect/free_surface.h>
+#include <aspect/mesh_deformation/free_surface.h>
 #include <aspect/simulator/assemblers/stokes.h>
 #include <aspect/simulator/assemblers/advection.h>
 
