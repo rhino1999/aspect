@@ -313,7 +313,7 @@ namespace aspect
     template <int dim>
     void
     FreeSurface<dim>::deformation_constraints(const DoFHandler<dim> &free_surface_dof_handler,
-                                              ConstraintMatrix &mesh_constraints) const
+                                              ConstraintMatrix &mesh_velocity_constraints) const
     {
       // For the free surface indicators we constrain the displacement to be v.n
       LinearAlgebra::Vector boundary_velocity;
@@ -332,11 +332,11 @@ namespace aspect
       for (unsigned int i = 0; i < constrained_dofs.n_elements();  ++i)
         {
           types::global_dof_index index = constrained_dofs.nth_index_in_set(i);
-          if (mesh_constraints.can_store_line(index))
-            if (mesh_constraints.is_constrained(index)==false)
+          if (mesh_velocity_constraints.can_store_line(index))
+            if (mesh_velocity_constraints.is_constrained(index)==false)
               {
-                mesh_constraints.add_line(index);
-                mesh_constraints.set_inhomogeneity(index, boundary_velocity[index]);
+                mesh_velocity_constraints.add_line(index);
+                mesh_velocity_constraints.set_inhomogeneity(index, boundary_velocity[index]);
               }
         }
     }
@@ -405,6 +405,10 @@ namespace aspect
   {
     ASPECT_REGISTER_MESH_DEFORMATION_MODEL(FreeSurface,
                                            "free surface",
-                                           "")
+                                           "A plugin that computes the deformation of surface "
+                                           "vertices according to the solution of the flow problem. "
+                                           "In particular this means if the surface of the domain is "
+                                           "left open to flow, this flow will carry the mesh with it. "
+                                           "TODO add more documentation.")
   }
 }

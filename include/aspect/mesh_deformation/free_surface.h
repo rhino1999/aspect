@@ -82,7 +82,7 @@ namespace aspect
         virtual
         void
         deformation_constraints(const DoFHandler<dim> &free_surface_dof_handler,
-                                ConstraintMatrix &mesh_constraints) const;
+                                ConstraintMatrix &mesh_velocity_constraints) const;
 
         /**
          * Declare parameters for the free surface handling.

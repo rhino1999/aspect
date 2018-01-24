@@ -13,7 +13,7 @@ set Additional shared libraries            = ./libinner_core_convection.so
  
 set Dimension                              = 2
 set Use years in output instead of seconds = false
-set End time                               = 1.5e9
+set End time                               = 50
 set Output directory                       = output-inner_core_traction
 set Pressure normalization                 = no
 
@@ -78,10 +78,9 @@ subsection Free surface
   set List of model names = function
 
   subsection Function
-    set Function constants = growth_start=0
-    set Function expression = if(t<growth_start,0,x/8000); \
-                              if(t<growth_start,0,y/8000) \
-                             #;if(t<growth_start,0,z/8000)
+    set Function constants = growth_start=0, growth_rate=50
+    set Function expression = if(t<growth_start,0,x/50); \
+                              if(t<growth_start,0,y/50)
   end
 end
 

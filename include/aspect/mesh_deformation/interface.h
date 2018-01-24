@@ -36,9 +36,11 @@ namespace aspect
   namespace MeshDeformation
   {
     /**
-     * A base class for mesh deformation plugins. Each of these plugins should
-     * implement a function that determines the displacement for mesh vertices
-     * given the current position of the mesh vertex.
+     * A base class for mesh deformation plugins. Each derived class should
+     * implement a function that determines the deformation velocity for certain
+     * mesh vertices and store them in a ConstraintMatrix object. The velocities
+     * for all non-constrained vertices will be computed by solving a Laplace-
+     * problem with the given constraints.
      */
     template<int dim>
     class Interface
@@ -67,10 +69,15 @@ namespace aspect
          */
         virtual void update();
 
+        /**
+         * A function that creates constraints for the velocity of certain mesh
+         * vertices (e.g. the surface vertices). The calling class will respect
+         * these constraints when computing the new vertex positions.
+         */
         virtual
         void
         deformation_constraints(const DoFHandler<dim> &free_surface_dof_handler,
-                                ConstraintMatrix &mesh_constraints) const = 0;
+                                ConstraintMatrix &mesh_velocity_constraints) const = 0;
 
         /**
          * Declare the parameters this class takes through input files. The
@@ -310,20 +317,6 @@ namespace aspect
          * upon redistribution.
          */
         ConstraintMatrix mesh_vertex_constraints;
-
-        /**
-         * A struct for holding information about how to advect the free surface.
-         */
-        struct SurfaceVelocity
-        {
-          enum Type { free_surface, function };
-        };
-
-        /**
-         * Stores whether to advect the free surface in the normal direction
-         * or the direction of the local vertical.
-         */
-        typename SurfaceVelocity::Type surface_velocity;
 
         /**
          * A set of boundary indicators that denote those boundaries that are
