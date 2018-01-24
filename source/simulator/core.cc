@@ -537,7 +537,9 @@ namespace aspect
                       ExcMessage("The free surface scheme can only be used with no pressure normalization") );
 
         // Allocate the FreeSurfaceHandler object
-        free_surface.reset( new FreeSurfaceHandler<dim>( *this, prm ) );
+        free_surface.reset(new MeshDeformation::FreeSurfaceHandler<dim>(*this));
+        free_surface->initialize_simulator(*this);
+        free_surface->parse_parameters(prm);
       }
 
     // Initialize the melt handler

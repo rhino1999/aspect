@@ -227,10 +227,6 @@ namespace aspect
         && !assemble_newton_stokes_system)
       {
         set_default_assemblers();
-
-        // Let the free surface add its assembler:
-        if (parameters.free_surface_enabled)
-          free_surface->set_assemblers();
       }
     else if (parameters.include_melt_transport
              && !assemble_newton_stokes_system)
@@ -245,10 +241,6 @@ namespace aspect
              && assemble_newton_stokes_system)
       {
         newton_handler->set_assemblers(*assemblers);
-
-        // Let the free surface add its assembler:
-        if (parameters.free_surface_enabled)
-          free_surface->set_assemblers();
       }
     else if (parameters.include_melt_transport
              && assemble_newton_stokes_system)

@@ -995,9 +995,6 @@ namespace aspect
     }
     prm.leave_subsection ();
 
-    // also declare the parameters that the FreeSurfaceHandler needs
-    FreeSurfaceHandler<dim>::declare_parameters (prm);
-
     // then, finally, let user additions that do not go through the usual
     // plugin mechanism, declare their parameters if they have subscribed
     // to the relevant signals
@@ -1725,6 +1722,7 @@ namespace aspect
   void Simulator<dim>::declare_parameters (ParameterHandler &prm)
   {
     Parameters<dim>::declare_parameters (prm);
+    MeshDeformation::FreeSurfaceHandler<dim>::declare_parameters (prm);
     MeltHandler<dim>::declare_parameters (prm);
     Postprocess::Manager<dim>::declare_parameters (prm);
     MeshRefinement::Manager<dim>::declare_parameters (prm);

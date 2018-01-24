@@ -79,8 +79,11 @@ namespace aspect
   template <int dim>
   class NewtonHandler;
 
-  template <int dim>
-  class FreeSurfaceHandler;
+  namespace MeshDeformation
+  {
+    template <int dim>
+    class FreeSurfaceHandler;
+  }
 
   namespace internal
   {
@@ -1625,11 +1628,11 @@ namespace aspect
        * if we do not need the machinery for doing free surface stuff, we do
        * not even allocate it.
        */
-      std_cxx11::shared_ptr<FreeSurfaceHandler<dim> > free_surface;
+      std_cxx11::shared_ptr<MeshDeformation::FreeSurfaceHandler<dim> > free_surface;
 
       friend class boost::serialization::access;
       friend class SimulatorAccess<dim>;
-      friend class FreeSurfaceHandler<dim>;  // FreeSurfaceHandler needs access to the internals of the Simulator
+      friend class MeshDeformation::FreeSurfaceHandler<dim>;  // FreeSurfaceHandler needs access to the internals of the Simulator
       friend struct Parameters<dim>;
   };
 }
