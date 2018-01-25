@@ -75,7 +75,7 @@ subsection Model settings
 end
 
 subsection Free surface
-  set List of model names = function
+  set List of model names = function, free surface
 
   subsection Function
     set Function constants = growth_start=0, growth_rate=50

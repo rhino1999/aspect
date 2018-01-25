@@ -21,15 +21,15 @@ Number of free surface degrees of freedom: 674
 
 *** Timestep 1:  t=50 seconds
    Solving mesh velocity system... 1 iterations.
-   Solving temperature system... 125 iterations.
+   Solving temperature system... 130 iterations.
    Rebuilding Stokes preconditioner...
-   Solving Stokes system... 59+0 iterations.
+   Solving Stokes system... 88+0 iterations.
 
    Postprocessing:
      Writing graphical output:           output-inner_core_growth/solution/solution-00001
-     RMS, max velocity:                  0.000145 m/s, 0.000166 m/s
-     Temperature min/avg/max:            0 K, 11.7 K, 5.853 K
-     Heat fluxes through boundary parts: 73.58 W
+     RMS, max velocity:                  0.00103 m/s, 0.0019 m/s
+     Temperature min/avg/max:            0 K, 1.081 K, 1.791 K
+     Heat fluxes through boundary parts: 22.64 W
 
 Termination requested by criterion: end time
 

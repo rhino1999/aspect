@@ -31,6 +31,7 @@
 #include <deal.II/fe/mapping_q1_eulerian.h>
 
 #include <deal.II/lac/sparsity_tools.h>
+#include <deal.II/lac/constraint_matrix.h>
 
 #include <deal.II/numerics/vector_tools.h>
 
@@ -308,13 +309,36 @@ namespace aspect
       sim.signals.post_compute_no_normal_flux_constraints(sim.triangulation);
 
       // Ask all plugins to add their constraints
-      // ...
+      // For the moment add constraints from all plugins into one matrix, then
+      // merge that matrix with the existing constraints (respecting the existing
+      // constraints as more important)
+      ConstraintMatrix plugin_constraints(mesh_vertex_constraints.get_local_lines());
+
       for (unsigned int i=0; i<mesh_deformation_objects.size(); ++i)
         {
+          ConstraintMatrix current_plugin_constraints(mesh_vertex_constraints.get_local_lines());
+
           mesh_deformation_objects[i]->deformation_constraints(free_surface_dof_handler,
-                                                               mesh_displacement_constraints);
+                                                               current_plugin_constraints);
+
+          const IndexSet local_lines = current_plugin_constraints.get_local_lines();
+          for (auto index = local_lines.begin(); index != local_lines.end(); ++index)
+            {
+              if (current_plugin_constraints.is_constrained(*index))
+                if (plugin_constraints.is_constrained(*index) == false)
+                  {
+                    plugin_constraints.add_line(*index);
+                    plugin_constraints.set_inhomogeneity(*index, current_plugin_constraints.get_inhomogeneity(*index));
+                  }
+                else
+                  {
+                    const double inhomogeneity = plugin_constraints.get_inhomogeneity(*index);
+                    plugin_constraints.set_inhomogeneity(*index, current_plugin_constraints.get_inhomogeneity(*index) + inhomogeneity);
+                  }
+            }
         }
 
+      mesh_displacement_constraints.merge(plugin_constraints,ConstraintMatrix::left_object_wins);
       mesh_displacement_constraints.close();
     }
 
