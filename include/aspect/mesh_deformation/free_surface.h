@@ -66,19 +66,35 @@ namespace aspect
 
   namespace MeshDeformation
   {
+    /**
+     * A plugin that computes the deformation of surface "
+     * vertices according to the solution of the flow problem.
+     * In particular this means if the surface of the domain is
+     * left open to flow, this flow will carry the mesh with it.
+     */
     template<int dim>
     class FreeSurface : public Interface<dim>, public SimulatorAccess<dim>
     {
       public:
+        /**
+         * Initialize function, which connects the set_assemblers function
+         * to the appropriate Simulator signal.
+         */
         virtual void initialize();
 
         /**
-         * Called by Simulator::set_assemblers() to allow the FreeSurfaceHandler
+         * Called by Simulator::set_assemblers() to allow the FreeSurface plugin
          * to register its assembler.
          */
         void set_assemblers(const SimulatorAccess<dim> &simulator_access,
                             aspect::Assemblers::Manager<dim> &assemblers) const;
 
+        /**
+         * A function that creates constraints for the velocity of surface
+         * vertices based on the solution velocity. This is equivalent to
+         * having a free surface, as the velocity essentially carries the
+         * nodes with it.
+         */
         virtual
         void
         deformation_constraints(const DoFHandler<dim> &free_surface_dof_handler,
