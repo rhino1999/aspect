@@ -23,11 +23,21 @@
 #define _aspect_mesh_deformation_interface_h
 
 #include <aspect/plugins.h>
-#include <aspect/simulator.h>
+#include <aspect/simulator_access.h>
+
+#include <aspect/global.h>
+
+#include <deal.II/fe/fe_system.h>
+#include <deal.II/dofs/dof_handler.h>
+#include <deal.II/lac/constraint_matrix.h>
+#include <deal.II/base/index_set.h>
+
 
 namespace aspect
 {
   using namespace dealii;
+
+  template <int dim> class Simulator;
 
   /**
    * A namespace that contains everything that is related to the deformation

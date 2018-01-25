@@ -21,6 +21,8 @@
 
 #include <aspect/mesh_deformation/function.h>
 
+#include <deal.II/numerics/vector_tools.h>
+
 namespace aspect
 {
   namespace MeshDeformation

@@ -20,11 +20,13 @@
 
 
 #include <aspect/mesh_deformation/free_surface.h>
-#include <aspect/simulator.h>
-#include <aspect/global.h>
+#include <aspect/simulator_signals.h>
+#include <aspect/gravity_model/interface.h>
+#include <aspect/geometry_model/interface.h>
 #include <aspect/simulator/assemblers/interface.h>
 #include <aspect/melt.h>
 
+#include <deal.II/dofs/dof_tools.h>
 
 namespace aspect
 {

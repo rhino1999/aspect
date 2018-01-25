@@ -31,7 +31,6 @@
 #include <deal.II/fe/mapping_q1_eulerian.h>
 
 #include <deal.II/lac/sparsity_tools.h>
-#include <deal.II/lac/constraint_matrix.h>
 
 #include <deal.II/numerics/vector_tools.h>
 
