@@ -1,5 +1,3 @@
------------------------------------------------------------------------------
------------------------------------------------------------------------------
 
 Loading shared library <./libinner_core_growth.so>
 
@@ -21,15 +19,15 @@ Number of free surface degrees of freedom: 674
 
 *** Timestep 1:  t=50 seconds
    Solving mesh velocity system... 1 iterations.
-   Solving temperature system... 130 iterations.
+   Solving temperature system... 128 iterations.
    Rebuilding Stokes preconditioner...
-   Solving Stokes system... 88+0 iterations.
+   Solving Stokes system... 89+0 iterations.
 
    Postprocessing:
      Writing graphical output:           output-inner_core_growth/solution/solution-00001
-     RMS, max velocity:                  0.00103 m/s, 0.0019 m/s
-     Temperature min/avg/max:            0 K, 1.081 K, 1.791 K
-     Heat fluxes through boundary parts: 22.64 W
+     RMS, max velocity:                  0.0117 m/s, 0.0118 m/s
+     Temperature min/avg/max:            0 K, 11.68 K, 5.847 K
+     Heat fluxes through boundary parts: 73.6 W
 
 Termination requested by criterion: end time
 
