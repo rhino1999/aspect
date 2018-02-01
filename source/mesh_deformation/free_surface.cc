@@ -25,6 +25,7 @@
 #include <aspect/geometry_model/interface.h>
 #include <aspect/simulator/assemblers/interface.h>
 #include <aspect/melt.h>
+#include <aspect/simulator.h>
 
 #include <deal.II/dofs/dof_tools.h>
 
@@ -52,7 +53,7 @@ namespace aspect
 
       if (this->get_parameters().include_melt_transport)
         {
-          this->get_melt_handler().apply_free_surface_stabilization_with_melt (this->get_free_surface_handler().get_stabilization_term(),
+          this->get_melt_handler().apply_free_surface_stabilization_with_melt (free_surface_theta,
                                                                                scratch.cell,
                                                                                scratch,
                                                                                data);

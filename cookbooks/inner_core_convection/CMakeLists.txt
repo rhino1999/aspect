@@ -37,3 +37,9 @@ PROJECT(${TARGET})
 
 ADD_LIBRARY(${TARGET} SHARED inner_core_assembly.cc)
 ASPECT_SETUP_PLUGIN(${TARGET})
+
+SET(TARGET "inner_core_melt")
+PROJECT(${TARGET})
+
+ADD_LIBRARY(${TARGET} SHARED inner_core_with_melt.cc)
+ASPECT_SETUP_PLUGIN(${TARGET})

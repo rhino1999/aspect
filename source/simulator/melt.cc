@@ -478,15 +478,6 @@ namespace aspect
       const types::boundary_id boundary_indicator
         = scratch.cell->face(scratch.face_number)->boundary_id();
 
-      // If the boundary is a free surface, we always want to use
-      // grad_p_f = rho_f * gravity,
-      // because that means that the fluid will move with the same velocity as the solid,
-      // and no melt can flow through the free surface boundary.
-      // For this case, we do not have to assemble any of the terms (the sum would be zero).
-      if (this->get_parameters().free_surface_boundary_indicators.find(boundary_indicator)
-          != this->get_parameters().free_surface_boundary_indicators.end())
-        return;
-
       const Introspection<dim> &introspection = this->introspection();
       const FiniteElement<dim> &fe = this->get_fe();
 

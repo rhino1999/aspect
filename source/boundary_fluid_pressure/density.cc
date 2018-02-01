@@ -47,12 +47,14 @@ namespace aspect
       for (unsigned int q=0; q<fluid_pressure_gradient_outputs.size(); ++q)
         {
           const Tensor<1,dim> gravity = this->get_gravity_model().gravity_vector(material_model_inputs.position[q]);
+          const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
 
           switch (density_formulation)
             {
               case DensityFormulation::solid_density:
               {
-                fluid_pressure_gradient_outputs[q] = (material_model_outputs.densities[q] * gravity) * normal_vectors[q];
+                double porosity = std::max(material_model_inputs.composition[q][porosity_idx],0.0);
+                fluid_pressure_gradient_outputs[q] = (((1.0 - porosity) * material_model_outputs.densities[q] + porosity * melt_outputs->fluid_densities[q]) * gravity) * normal_vectors[q];
                 break;
               }
 
