@@ -7960,6 +7960,51 @@ Both trends are shown in Figure~\ref{fig:inner-core-trends} and can be compared 
     \label{fig:inner-core-trends}
 \end{figure}
 
+\paragraph{Inner core growth with compaction} 
+The parameters that determine the dynamics of inner core growth and compaction are:
+
+\paragraph{(1) The ratio between Darcy velocity and sedimentation rate.}
+    If we assume $\nabla p_f = \bar{\rho} \mathbf g$ at the outer boundary, then
+    \begin{equation}
+      \mathbf u_D = \mathbf u_f - \mathbf u_s = \frac{k_\phi }{\eta_f} (\bar{\rho} - \rho_f) \mathbf g. 
+    \end{equation}
+    Using the parameters from Table 2 of Sumita et al., 1995 (A model for sedimentary compaction of a viscous medium and its application to inner-core growth) \\
+    $\rho_s = 12800 \text{ kg/m}^3$, \\
+    $\rho_f = 12200 \text{ kg/m}^3$ (implying $\bar{\rho} - \rho_f = 300 \text{ kg/m}^3$ for $\phi = 0.5$), \\
+    $k_\phi = 2.7 \cdot 10^{-17} \text{ m}^2$, \\
+    $\eta_f = 1.22\cdot 10^{-3} \text{ Pa s}$ and \\
+    $g = 4.4 \text{ m/s}^2 \cdot \frac{r}{1221000 \text{km}}$, \\
+    the Darcy velocity
+    \begin{equation}
+      \mathbf u_D = 9.37 \cdot 10^{-4} \text{ m/yr} \cdot \frac{r}{1221000 \text{ km}} . 
+    \end{equation}
+    
+    Note that this means the Darcy velocity at the outer boundary changes over time, as the inner core grows, because the gravity at the inner-core boundary increases linearly with its radius. So the Darcy velocity shortly after formation of the inner core would have been much smaller than it is today. 
+    
+    So assuming we start with a radius of $r = 122.1$ m (a fraction of $10^{-4}$ of the present-day inner core radius), the initial Darcy velocity would be $\mathbf u_D = 9.37 \cdot 10^{-8} \text{ m/yr}$. 
+    As the inner core grows over time by about a factor 5 during the model runtime of 4 Ga, $\mathbf u_D$ at the end of the model run is larger than at the start.  
+    To vary $\mathbf u_D$, we change the permeability $k_\phi$ between $2.7 \cdot 10^{-20} \text{ m}^2$ and $2.7 \cdot 10^{-17} \text{ m}^2$. 
+    
+    In our example, we use $u_0 = 2.97 \cdot 10^{-15} \text{ m/s} = 9.37 \cdot 10^{-8} \text{ m/yr}$ as the sedimentation rate, to have $u_0 = u_D$ for the reference values of the material model and the start of the model. 
+
+\paragraph{(2) The compaction length.} 
+    \begin{equation}
+      \delta = \sqrt{\frac{k_\phi}{\eta_f}(\xi + 4/3 \eta)}. 
+    \end{equation}
+    
+    At the outer boundary, \\
+    $k_\phi = 2.7 \cdot 10^{-17} \text{ m/s}^2$, \\
+    $\eta_f = 1.22\cdot 10^{-3} \text{ Pa s}$, \\
+    $\eta = 8 \cdot 10^{-21} \text{ Pa s}$, \\
+    $\xi = 4/3 \, \eta / \phi = 2.1 \cdot 10^{-22} \text{ Pa s}$, \\
+    so the compaction length is
+    \begin{equation}
+      \delta = \sqrt{\frac{k_\phi}{\eta_f}(2 \eta)} = 1.882 \cdot 10^4  \text{ m}. 
+    \end{equation}
+    
+    This is approximately 15 times the radius of the inner core at the end of the model run. 
+    We can vary the viscosities $\eta$ and $\xi$ to change the compaction length. 
+
 \subsubsection{Melt migration in a 2D mantle convection model}
 
 \textit{This section was contributed by Juliane Dannberg and is based on a section in \cite{dannberg_melt} by Juliane Dannberg and Timo Heister.}
