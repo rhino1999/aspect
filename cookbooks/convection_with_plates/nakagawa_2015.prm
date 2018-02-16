@@ -7,8 +7,8 @@ set Dimension                              = 2
 set Use years in output instead of seconds = true
 set End time                               = 1e10
 set Linear solver tolerance                = 5e-6
-set Output directory                       = nakagawa_2015
-set Pressure normalization                 = no
+set Output directory                       = nakagawa_2015_0.04
+set Pressure normalization                 = surface
 
 # We use a nonlinear solver that solves the temperature and composition system 
 # once, and then iterates over the Stokes system. 
@@ -23,18 +23,12 @@ set CFL number                             = 0.5
 set Number of cheap Stokes solver steps    = 500
 set Adiabatic surface temperature          = 1600
 
-
-subsection Free surface
-#  set Free surface stabilization theta = 0.95
-end
-
 # We use one compositional field that represents the lithospheric plates. 
 # Below in the material model, we can assign specific material properties to it. 
 subsection Compositional fields
   set Number of fields = 1
   set Names of fields = continent
 end
-
 
 # This material model is the same as the visco-plastic model in the main version of ASPECT, 
 # except that it is compressible. All material parameters can be given as a list: If only one 
@@ -98,7 +92,7 @@ subsection Adiabatic conditions model
 end
 
 
-# The gravity model reads an ascii data file generated with BurnMan.
+# The gravity is a constant.
 subsection Gravity model
   set Model name = radial constant
   subsection Radial constant
@@ -109,7 +103,7 @@ end
 
 # The top and bottom boundaries are free slip, so we have to choose a method
 # for removing the nullspace of the solution (otherwise, material could freely 
-# rotate in the manntle). We choose to have a zero angular momentum. 
+# rotate in the mantle). We choose to have a zero angular momentum. 
 subsection Model settings
   set Tangential velocity boundary indicators = top, bottom
   set Remove nullspace                        = angular momentum
@@ -183,7 +177,7 @@ subsection Postprocess
 
   subsection Visualization
     set Output format                 = vtu
-    set Time between graphical output = 0
+    set Time between graphical output = 5e6
     set Number of grouped files       = 0
     set List of output variables      = material properties, gravity, adiabat, nonadiabatic temperature, nonadiabatic pressure, stress, strain rate
   end
