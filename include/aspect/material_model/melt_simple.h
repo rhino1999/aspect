@@ -126,6 +126,7 @@ namespace aspect
         double xi_0;
         double eta_f;
         double thermal_viscosity_exponent;
+        double maximum_viscosity_variation;
         double thermal_bulk_viscosity_exponent;
         double thermal_expansivity;
         double reference_specific_heat;

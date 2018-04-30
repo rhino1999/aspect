@@ -355,7 +355,8 @@ namespace aspect
           if (this->include_adiabatic_heating ())
             {
               const double delta_temp = in.temperature[i]-this->get_adiabatic_conditions().temperature(in.position[i]);
-              visc_temperature_dependence = std::max(std::min(std::exp(-thermal_viscosity_exponent*delta_temp/this->get_adiabatic_conditions().temperature(in.position[i])),1e4),1e-4);
+              const double T_dependence = -thermal_viscosity_exponent*delta_temp/this->get_adiabatic_conditions().temperature(in.position[i]);
+              visc_temperature_dependence = std::max(std::min(std::exp(T_dependence),maximum_viscosity_variation),1/maximum_viscosity_variation);
             }
           else
             {
@@ -365,7 +366,7 @@ namespace aspect
                                            0.0
                                            :
                                            thermal_viscosity_exponent*delta_temp/reference_T);
-              visc_temperature_dependence = std::max(std::min(std::exp(-T_dependence),1e4),1e-4);
+              visc_temperature_dependence = std::max(std::min(std::exp(-T_dependence),maximum_viscosity_variation),1/maximum_viscosity_variation);
             }
           out.viscosities[i] *= visc_temperature_dependence;
         }
@@ -414,7 +415,8 @@ namespace aspect
               if (this->include_adiabatic_heating ())
                 {
                   const double delta_temp = in.temperature[i]-this->get_adiabatic_conditions().temperature(in.position[i]);
-                  visc_temperature_dependence = std::max(std::min(std::exp(-thermal_bulk_viscosity_exponent*delta_temp/this->get_adiabatic_conditions().temperature(in.position[i])),1e4),1e-4);
+                  const double T_dependence = -thermal_bulk_viscosity_exponent*delta_temp/this->get_adiabatic_conditions().temperature(in.position[i]);
+                  visc_temperature_dependence = std::max(std::min(std::exp(T_dependence),maximum_viscosity_variation),1/maximum_viscosity_variation);
                 }
               else
                 {
@@ -424,7 +426,7 @@ namespace aspect
                                                0.0
                                                :
                                                thermal_bulk_viscosity_exponent*delta_temp/reference_T);
-                  visc_temperature_dependence = std::max(std::min(std::exp(-T_dependence),1e4),1e-4);
+                  visc_temperature_dependence = std::max(std::min(std::exp(-T_dependence),maximum_viscosity_variation),1/maximum_viscosity_variation);
                 }
               melt_out->compaction_viscosities[i] *= visc_temperature_dependence;
             }
@@ -466,6 +468,12 @@ namespace aspect
           prm.declare_entry ("Exponential melt weakening factor", "27",
                              Patterns::Double (0),
                              "The porosity dependence of the viscosity. Units: dimensionless.");
+          prm.declare_entry ("Maximum temperature-induced viscosity variation", "1e4",
+                             Patterns::Double (0),
+                             "The factor by how much the shear and bulk viscosities can vary around"
+                             "the value at the reference temperature (in both directions) before it "
+                             "is cut off. "
+                             "Units: none.");
           prm.declare_entry ("Thermal viscosity exponent", "0.0",
                              Patterns::Double (0),
                              "The temperature dependence of the shear viscosity. Dimensionless exponent. "
@@ -700,6 +708,7 @@ namespace aspect
           eta_f                      = prm.get_double ("Reference melt viscosity");
           reference_permeability     = prm.get_double ("Reference permeability");
           thermal_viscosity_exponent = prm.get_double ("Thermal viscosity exponent");
+          maximum_viscosity_variation = prm.get_double ("Maximum temperature-induced viscosity variation");
           thermal_bulk_viscosity_exponent = prm.get_double ("Thermal bulk viscosity exponent");
           thermal_conductivity       = prm.get_double ("Thermal conductivity");
           reference_specific_heat    = prm.get_double ("Reference specific heat");
