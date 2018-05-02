@@ -351,6 +351,7 @@ namespace aspect
           out.thermal_conductivities[i] = thermal_conductivity;
           out.compressibilities[i] = compressibility;
 
+          // Temperature dependence of viscosity
           double visc_temperature_dependence = 1.0;
           if (this->include_adiabatic_heating ())
             {
@@ -369,6 +370,41 @@ namespace aspect
               visc_temperature_dependence = std::max(std::min(std::exp(-T_dependence),maximum_viscosity_variation),1/maximum_viscosity_variation);
             }
           out.viscosities[i] *= visc_temperature_dependence;
+
+          if(in.strain_rate.size() > 0)
+            {
+              // Stress limiter: reset the viscosity to the yield surface
+              //
+              // We calculate the second moment invariant of the deviatoric strain rate tensor.
+              // This is equal to the negative of the second principle
+              // invariant of the deviatoric strain rate (calculated with the function second_invariant),
+              // as shown in Appendix A of Zienkiewicz and Taylor (Solid Mechanics, 2000).
+              //
+              // The negative of the second principle invariant is equal to 0.5 e_dot_dev_ij e_dot_dev_ji,
+              // where e_dot_dev is the deviatoric strain rate tensor. The square root of this quantity
+              // gives the common definition of effective strain rate.
+              const double strain_rate_effective = std::fabs(second_invariant(deviator(in.strain_rate[i])));
+              const double pressure = out.densities[i] * this->get_gravity_model().gravity_vector(in.position[i]).norm()
+                                      * this->get_geometry_model().depth(in.position[i]);
+
+              if(strain_rate_effective > std::numeric_limits<double>::min())
+                {
+                  const double sin_phi = std::sin(angle_of_internal_friction);
+                  const double cos_phi = std::cos(angle_of_internal_friction);
+                  const double strength = ( (dim==3)
+                                            ?
+                                            (6.0 * cohesion * cos_phi + 6.0 * pressure * sin_phi) * 1./(std::sqrt(3.0)*(3.0+sin_phi))
+                                            :
+                                            cohesion * cos_phi + pressure * sin_phi );
+
+                  // Rescale the viscosity back onto the yield surface
+                  const double eta_plastic = strength * 1./(2.*std::sqrt(strain_rate_effective));
+                  out.viscosities[i] = std::min(eta_plastic, out.viscosities[i]);
+                }
+
+              Assert(dealii::numbers::is_finite(out.viscosities[i]),
+                     ExcMessage ("Error: Averaged viscosity is not finite."));
+            }
         }
 
       // fill melt outputs if they exist
@@ -408,7 +444,7 @@ namespace aspect
                                                      * this->get_gravity_model().gravity_vector(in.position[i]);
 
               const double phi_0 = 0.05;
-              porosity = std::max(std::min(porosity,0.995),1e-4);
+              porosity = std::max(std::min(porosity,1.0),1e-4);
               melt_out->compaction_viscosities[i] = xi_0 * phi_0 / porosity;
 
               double visc_temperature_dependence = 1.0;
@@ -598,6 +634,15 @@ namespace aspect
                              "Scaling with depletion is linear. Only active when fractional melting "
                              "is used. "
                              "Units: $K$.");
+          prm.declare_entry ("Angle of internal friction", "0",
+                             Patterns::Double (0),
+                             "The value of the angle of internal friction $\\phi$. "
+                             "For a value of zero, in 2D the von Mises "
+                             "criterion is retrieved. Angles higher than 30 degrees are "
+                             "harder to solve numerically. Units: degrees.");
+          prm.declare_entry ("Cohesion", "2e7",
+                             Patterns::Double (0),
+                             "The value of the cohesion $C$. Units: $Pa$.");
           prm.declare_entry ("A1", "1085.7",
                              Patterns::Double (),
                              "Constant parameter in the quadratic "
@@ -748,6 +793,10 @@ namespace aspect
                                  "You have to choose it in such a way that it is smaller than the inverse of the "
                                  "'Freezing rate' chosen in the material model, which is currently "
                                  + Utilities::to_string(1.0/freezing_rate) + "."));
+
+          // Convert degrees to radians
+          angle_of_internal_friction = prm.get_double ("Angle of internal friction") * numbers::PI/180.0;
+          cohesion                   = prm.get_double ("Cohesion");
 
           A1              = prm.get_double ("A1");
           A2              = prm.get_double ("A2");

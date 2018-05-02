@@ -143,6 +143,8 @@ namespace aspect
         bool fractional_melting;
         double freezing_rate;
         double melting_time_scale;
+        double cohesion;
+        double angle_of_internal_friction;
 
         /**
          * Parameters for anhydrous melting of peridotite after Katz, 2003
