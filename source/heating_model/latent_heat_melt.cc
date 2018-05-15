@@ -47,7 +47,7 @@ namespace aspect
           heating_model_outputs.lhs_latent_heat_terms[q] = 0.0;
           heating_model_outputs.rates_of_temperature_change[q] = 0.0;
 
-          if (this->introspection().compositional_name_exists("porosity") &&  this->get_timestep_number() > 0)
+          if (this->introspection().compositional_name_exists("porosity") && this->get_timestep_number() > 0)
             {
               const double porosity_idx = this->introspection().compositional_index_for_name("porosity");
               double melting_rate = 0.0;
@@ -134,6 +134,14 @@ namespace aspect
         prm.leave_subsection();
       }
       prm.leave_subsection();
+    }
+
+
+    template <int dim>
+    double
+    LatentHeatMelt<dim>::get_melting_entropy_change () const
+    {
+      return melting_entropy_change;
     }
   }
 }

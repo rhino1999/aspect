@@ -98,12 +98,34 @@ namespace aspect
          */
         double subadiabaticity;
 
+        /*
+         * Whether the initial temperature profile should take into account
+         * the effect of latent heat of melting, which increases the temperature
+         * gradient.
+         */
+        bool include_latent_heat_of_melt;
+
+        /*
+         * Whether to use a function (instead of the constant value given in
+         * age_top_boundary_layer to prescribe the age of the top boundary
+         * layer.
+         */
+        bool use_age_function_for_top_boundary;
+
         /**
          * A function object representing the compositional fields that will
          * be used as a reference profile for calculating the thermal
          * diffusivity. The function depends only on depth.
          */
         std_cxx11::unique_ptr<Functions::ParsedFunction<1> > function;
+
+        /**
+        * A function object representing the age of the lithosphere. The
+        * function depends only on the horizontal coordinate(s), and can be
+        * used to specify different ages of the lithosphere for different places
+        * in the model.
+        */
+        std_cxx11::unique_ptr<Functions::ParsedFunction<dim-1> > age_function;
     };
   }
 }

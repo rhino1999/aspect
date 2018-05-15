@@ -25,6 +25,8 @@
 #include <aspect/geometry_model/box.h>
 #include <aspect/geometry_model/spherical_shell.h>
 #include <aspect/geometry_model/chunk.h>
+#include <aspect/heating_model/latent_heat_melt.h>
+#include <aspect/melt.h>
 
 #include <cmath>
 
@@ -37,9 +39,23 @@ namespace aspect
     Adiabatic<dim>::
     initial_temperature (const Point<dim> &position) const
     {
+      // get the age of the top boundary layer
+      // TODO: make this work in spherical coordinates...
+      double age_top;
+      if(use_age_function_for_top_boundary)
+        {
+          Point<dim-1> surface_point;
+          for (unsigned int d=0; d<dim-1; ++d)
+            surface_point[d] = position[d];
+          age_top = age_function->value(surface_point);
+        }
+      else
+        age_top = age_top_boundary_layer;
+
       // convert input ages to seconds
-      const double age_top =    (this->convert_output_to_years() ? age_top_boundary_layer * year_in_seconds
-                                 : age_top_boundary_layer);
+      if (this->convert_output_to_years())
+        age_top *= year_in_seconds;
+
       const double age_bottom = (this->convert_output_to_years() ? age_bottom_boundary_layer * year_in_seconds
                                  : age_bottom_boundary_layer);
 
@@ -211,11 +227,49 @@ namespace aspect
                                          :
                                          adiabatic_surface_temperature;
 
-      // return sum of the adiabatic profile, the boundary layer temperatures and the initial
+      // compute the sum of the adiabatic profile, the boundary layer temperatures and the initial
       // temperature perturbation.
-      return temperature_profile + surface_cooling_temperature
-             + (perturbation > 0.0 ? std::max(bottom_heating_temperature + subadiabatic_T,perturbation)
-                : bottom_heating_temperature + subadiabatic_T);
+      double temperature = temperature_profile + surface_cooling_temperature
+                           + (perturbation > 0.0
+                              ?
+                              std::max(bottom_heating_temperature + subadiabatic_T, perturbation)
+                              :
+                              bottom_heating_temperature + subadiabatic_T);
+
+      // As a last step, compute the latent heat effects (because they depend on the temperature itself)
+      const std::vector<std::string> &heating_model_names = this->get_heating_model_manager().get_active_heating_model_names();
+      if (include_latent_heat_of_melt
+          && temperature > std::numeric_limits<double>::min()
+          && std::find(heating_model_names.begin(), heating_model_names.end(), "latent heat melt") != heating_model_names.end())
+        {
+          const double melting_entropy_change =
+              this->get_heating_model_manager().template find_heating_model<HeatingModel::LatentHeatMelt<dim> >()->get_melting_entropy_change();
+
+          const MaterialModel::MeltFractionModel<dim> *melt_material_model
+                 = dynamic_cast <const MaterialModel::MeltFractionModel<dim>*> (&this->get_material_model());
+          double temperature_change = 0;
+          double old_temperature_change;
+          const double tolerance = 1e-6;
+
+          // Because we do not know how the melt fraction depends on temperature,
+          // we have to iterate out the temperature change caused by latent heat effects
+          do
+            {
+              old_temperature_change = temperature_change;
+              std::vector<double> melt_fraction(1);
+              melt_material_model->melt_fractions(in, melt_fraction);
+
+              temperature_change = melting_entropy_change
+                                   * melt_fraction[0]
+                                   * (temperature + temperature_change)
+                                   / out.specific_heat[0];
+            }
+          while((temperature_change - old_temperature_change)/temperature > tolerance);
+
+          temperature += temperature_change;
+        }
+
+      return temperature;
     }
 
 
@@ -230,9 +284,10 @@ namespace aspect
           prm.declare_entry ("Age top boundary layer", "0e0",
                              Patterns::Double (0),
                              "The age of the upper thermal boundary layer, used for the calculation "
-                             "of the half-space cooling model temperature. Units: years if the "
-                             "'Use years in output instead of seconds' parameter is set; "
-                             "seconds otherwise.");
+                             "of the half-space cooling model temperature. This is only used if the "
+                             "parameter 'Use age function for top boundary' is set to false. "
+                             "Units: years if the 'Use years in output instead of seconds' parameter "
+                             "is set; seconds otherwise.");
           prm.declare_entry ("Age bottom boundary layer", "0e0",
                              Patterns::Double (0),
                              "The age of the lower thermal boundary layer, used for the calculation "
@@ -270,7 +325,28 @@ namespace aspect
                              "This function is one-dimensional and depends only on depth. The format of this "
                              "functions follows the syntax understood by the "
                              "muparser library, see Section~\\ref{sec:muparser-format}.");
+          prm.declare_entry ("Include latent heat of melting", "false",
+                             Patterns::Bool (),
+                             "Whether to include the effects of latent heat of melting on the temperature "
+                             "profile in the computation. As melting consumes latent heat, this effect will "
+                             "increase the temperature gradient. This option can only be used if the material "
+                             "model provides a melt fraction. This melt fraction is then used to compute the "
+                             "temperature change due to latent heat effects together with the "
+                             "``Melting entropy change'' given in the latent heat melt heating model. "
+                             "If the computation does not use the latent heat melt heating model, this option "
+                             "will have no effect.");
+          prm.declare_entry ("Use age function for top boundary", "false",
+                             Patterns::Bool (),
+                             "Whether to use a function given in the subsection ``Top boundary age function'' "
+                             "(if true) or the constant value given by the ``Age top boundary layer'' parameter "
+                             "for the age of the top boundary layer. "
+                             "The function ");
           prm.enter_subsection("Function");
+          {
+            Functions::ParsedFunction<1>::declare_parameters (prm, 1);
+          }
+          prm.leave_subsection();
+          prm.enter_subsection("Top boundary age function");
           {
             Functions::ParsedFunction<1>::declare_parameters (prm, 1);
           }
@@ -295,16 +371,25 @@ namespace aspect
       const unsigned int n_compositional_fields = prm.get_integer ("Number of fields");
       prm.leave_subsection ();
 
+
       prm.enter_subsection ("Initial temperature model");
       {
         prm.enter_subsection("Adiabatic");
         {
-          age_top_boundary_layer = prm.get_double ("Age top boundary layer");
-          age_bottom_boundary_layer = prm.get_double ("Age bottom boundary layer");
-          radius = prm.get_double ("Radius");
-          amplitude = prm.get_double ("Amplitude");
-          perturbation_position = prm.get("Position");
-          subadiabaticity = prm.get_double ("Subadiabaticity");
+          age_top_boundary_layer            = prm.get_double ("Age top boundary layer");
+          age_bottom_boundary_layer         = prm.get_double ("Age bottom boundary layer");
+          radius                            = prm.get_double ("Radius");
+          amplitude                         = prm.get_double ("Amplitude");
+          perturbation_position             = prm.get("Position");
+          subadiabaticity                   = prm.get_double ("Subadiabaticity");
+          include_latent_heat_of_melt       = prm.get_bool ("Include latent heat of melting");
+          use_age_function_for_top_boundary = prm.get_bool ("Use age function for top boundary");
+
+          if (include_latent_heat_of_melt)
+            Assert(dynamic_cast <const MaterialModel::MeltFractionModel<dim>*> (&this->get_material_model()),
+                             ExcMessage("The material model needs to provide a melt fraction for computing the"
+                                        "effects of latent heat of melting."));
+
           if (n_compositional_fields > 0)
             {
               prm.enter_subsection("Function");
@@ -326,6 +411,24 @@ namespace aspect
 
               prm.leave_subsection();
             }
+
+          prm.enter_subsection("Top boundary age function");
+          try
+            {
+              age_function.reset (new Functions::ParsedFunction<dim-1>(1));
+              age_function->parse_parameters (prm);
+            }
+          catch (...)
+            {
+              std::cerr << "ERROR: FunctionParser failed to parse\n"
+                        << "\t'Initial temperature model.Adiabatic.Top boundary age function'\n"
+                        << "with expression\n"
+                        << "\t'" << prm.get("Function expression") << "'"
+                        << "More information about the cause of the parse error \n"
+                        << "is shown below.\n";
+              throw;
+            }
+          prm.leave_subsection();
         }
         prm.leave_subsection ();
       }

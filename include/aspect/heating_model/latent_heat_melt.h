@@ -76,6 +76,12 @@ namespace aspect
          * @}
          */
 
+        /**
+         * Return the entropy change upon melting.
+         */
+        double
+        get_melting_entropy_change () const;
+
       private:
         // entropy change upon melting
         double melting_entropy_change;
