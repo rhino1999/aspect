@@ -71,6 +71,13 @@ namespace aspect
                                                      * normal_vectors[q];
                 break;
               }
+              case DensityFormulation::weighted_density:
+              {
+                fluid_pressure_gradient_outputs[q] = ((1.0 - fluid_density_weight) * material_model_outputs.densities[q] * gravity
+                                                      + fluid_density_weight * melt_outputs->fluid_densities[q] * gravity)
+                                                     * normal_vectors[q];
+                break;
+              }
 
               default:
                 Assert (false, ExcNotImplemented());
@@ -87,7 +94,7 @@ namespace aspect
         prm.enter_subsection("Density");
         {
           prm.declare_entry ("Density formulation", "solid density",
-                             Patterns::Selection ("solid density|fluid density|average density"),
+                             Patterns::Selection ("solid density|fluid density|average density|weighted density"),
                              "The density formulation used to compute the fluid pressure gradient "
                              "at the model boundary."
                              "\n\n"
@@ -108,7 +115,25 @@ namespace aspect
                              "(which is a better approximation for the lithostatic "
                              "pressure than just the solid density) and leads to approximately the same pressure in "
                              "the melt as in the solid, so that fluid is only flowing "
-                             "in or out due to differences in dynamic pressure.");
+                             "in or out due to differences in dynamic pressure."
+                             "\n\n"
+                             "'weighted density' prescribes the gradient of the fluid pressure as "
+                             "the a weighted average between fluid and solid density times gravity. "
+                             "This means that melt can still flow in or out due to differences in "
+                             "dynamic pressure, but this flow is impeded depending on the weights "
+                             "of the fluid and solid densities as described by the `Fluid density weight'"
+                             "parameter.");
+          prm.declare_entry ("Fluid density weight", "1.0",
+                             Patterns::Double (0,1),
+                             "The value $w$ used to weight the fluid and solid densities in the "
+                             "`weighted density' boundary condition. The boundary fluid pressure is "
+                             "computed as $w rho\\_{f} + (1-w) rho\\_{s} g$, where $rho\\_{f}$ is the "
+                             "fluid density, $rho\\_{s}$ is the solid density and $g$ is the gravity. "
+                             "That means that if $w=1$, this formulation is equivalent to the "
+                             "`fluid density' formulation, and if $w=0$, this formulation is equivalent "
+                             "to the `solid density' formulation. "
+                             "This parameter is only used if `weighted density' is selected as "
+                             "'Density formulation'.");
         }
         prm.leave_subsection ();
       }
@@ -130,8 +155,11 @@ namespace aspect
             density_formulation = DensityFormulation::fluid_density;
           else if (prm.get ("Density formulation") == "average density")
             density_formulation = DensityFormulation::average_density;
+          else if (prm.get ("Density formulation") == "weighted density")
+            density_formulation = DensityFormulation::weighted_density;
           else
             AssertThrow (false, ExcNotImplemented());
+          fluid_density_weight = prm.get_double ("Fluid density weight");
         }
         prm.leave_subsection ();
       }

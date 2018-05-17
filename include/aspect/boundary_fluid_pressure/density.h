@@ -80,11 +80,14 @@ namespace aspect
           {
             solid_density,
             fluid_density,
-            average_density
+            average_density,
+            weighted_density
           };
         };
 
         typename DensityFormulation::Kind density_formulation;
+
+        double fluid_density_weight;
     };
   }
 }
