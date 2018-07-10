@@ -964,6 +964,11 @@ namespace aspect
                          "how much different isotopes fractionate in the presence of a given temperature "
                          "gradient. If only one value is given, it is used for all fields. "
                          "Units: none.");
+      prm.enter_subsection("Solidus function");
+      {
+    	Functions::ParsedFunction<dim>::declare_parameters (prm, 1);
+      }
+      prm.leave_subsection();
     }
     prm.leave_subsection ();
 
@@ -1389,6 +1394,25 @@ namespace aspect
       list_of_isotope_fractionation_factors = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("List of isotope fractionation factors"))),
                                                                                       n_compositional_fields,
                                                                                       "List of isotope fractionation factors");
+      prm.enter_subsection("Solidus function");
+      {
+        try
+          {
+            solidus_function.reset (new Functions::ParsedFunction<1>(n_compositional_fields));
+            solidus_function->parse_parameters (prm);
+          }
+        catch (...)
+          {
+            std::cerr << "ERROR: FunctionParser failed to parse\n"
+                      << "\t'Initial composition model.Function'\n"
+                      << "with expression\n"
+                      << "\t'" << prm.get("Function expression") << "'\n"
+                      << "More information about the cause of the parse error \n"
+                      << "is shown below.\n";
+            throw;
+          }
+      }
+      prm.leave_subsection();
 
       // global_composition_max_preset.size() and global_composition_min_preset.size() are obtained early than
       // n_compositional_fields. Therefore, we can only check if their sizes are the same here.

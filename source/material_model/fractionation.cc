@@ -59,7 +59,7 @@ namespace aspect
                            :
                            0.0;
 
-          const double compressibility = 4e-12;
+          const double compressibility = 4.2e-12;
           out.thermal_expansion_coefficients[i] = thermal_alpha * exp(-this->get_geometry_model().depth(in.position[i]) / this->get_geometry_model().maximal_depth());
           out.densities[i] = reference_rho * (1 - out.thermal_expansion_coefficients[i] * (in.temperature[i] - ref_temperature))
                              * std::exp(compressibility * in.pressure[i])

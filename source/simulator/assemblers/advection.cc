@@ -110,13 +110,22 @@ namespace aspect
                   ExcMessage ("The product of density and c_P needs to be a "
                               "non-negative quantity."));
 
+          double transition = 0.0;
           const unsigned int c = advection_field.compositional_variable;
+          if(!advection_field_is_temperature)
+          {
+		    const dealii::Point<1> pressure_point (scratch.material_model_inputs.pressure[q]);
+		    const double solidus_T = this->get_parameters().solidus_function->value(pressure_point,c);
+		    if (scratch.material_model_inputs.temperature[q] > solidus_T)
+        	  transition = 1.0;
+          }
+
           const double conductivity =
             ((advection_field_is_temperature)
              ?
              scratch.material_model_outputs.thermal_conductivities[q]
              :
-             this->get_parameters().list_of_chemical_diffusivities[c]);
+             this->get_parameters().list_of_chemical_diffusivities[c] * transition);
           const double latent_heat_LHS =
             ((advection_field_is_temperature)
              ?
@@ -132,7 +141,7 @@ namespace aspect
              ?
              0.0
              :
-             this->get_parameters().list_of_isotope_fractionation_factors[c]
+			 this->get_parameters().list_of_isotope_fractionation_factors[c]*transition
              * (1.0 - scratch.material_model_inputs.composition[q][c]))
              / scratch.material_model_inputs.temperature[q];
 
@@ -509,12 +518,13 @@ namespace aspect
       (*scratch.face_finite_element_values)[introspection.extractors.temperature].get_function_gradients (this->get_solution(),
           scratch.face_current_temperature_gradients);
 
+      // we only want to assemble this term for dirichlet boundary conditions
       if (this->get_fixed_composition_boundary_indicators().find(face->boundary_id())
-          == this->get_fixed_composition_boundary_indicators().end()
+          != this->get_fixed_composition_boundary_indicators().end()
           && (!scratch.cell->has_periodic_neighbor(face_no)))
         {
           /*
-           * We are in the case of a Neumann composition boundary.
+           * We are in the case of a Dirichlet composition boundary.
            */
           for (unsigned int q=0; q<n_q_points; ++q)
             {
@@ -533,11 +543,17 @@ namespace aspect
                 }
 
               const unsigned int c = advection_field.compositional_variable;
+              const dealii::Point<1> pressure_point (scratch.face_material_model_inputs.pressure[q]);
+              const double solidus_T = this->get_parameters().solidus_function->value(pressure_point,c);
+              const double transition = scratch.face_material_model_inputs.temperature[q] > solidus_T
+            		                    ?
+            		                    1.0
+    									:
+    									0.0;
 
-              // for no flux, this term has to be zero at the boundary!
-              const double fractionation_term = 0.0; /*this->get_parameters().list_of_isotope_fractionation_factors[c]
+              const double fractionation_term = parameters.list_of_isotope_fractionation_factors[c] * transition
                                                 * (1.0 - scratch.face_material_model_inputs.composition[q][c])
-                                                / scratch.material_model_inputs.temperature[q];*/
+                                                / scratch.material_model_inputs.temperature[q];
 
               for (unsigned int i=0; i<advection_dofs_per_cell; ++i)
                 {

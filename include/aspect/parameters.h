@@ -23,6 +23,7 @@
 #define _aspect_parameters_h
 
 #include <deal.II/base/parameter_handler.h>
+#include <deal.II/base/parsed_function.h>
 
 #include <aspect/global.h>
 #include <aspect/material_model/interface.h>
@@ -501,6 +502,14 @@ namespace aspect
 
     std::vector<double>            list_of_chemical_diffusivities;
     std::vector<double>            list_of_isotope_fractionation_factors;
+
+    /**
+     * Solidus of the material we diffuse.
+     * If the temperature is below the solidus, diffusion becomes negligible.
+     * Note that the input argument is pressure.
+     */
+    std_cxx11::unique_ptr<Functions::ParsedFunction<1> > solidus_function;
+
     /**
      * @}
      */
