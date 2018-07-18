@@ -33,6 +33,7 @@
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/function_lib.h>
 #include <deal.II/fe/fe_values.h>
+#include <deal.II/numerics/fe_field_function.h>
 #include <deal.II/numerics/error_estimator.h>
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/base/table.h>
@@ -76,6 +77,9 @@ namespace aspect
          */
         void
         initialize ();
+
+        double
+        get_wave_amplitude () const;
 
         double
         get_wave_number () const;
@@ -124,6 +128,7 @@ namespace aspect
         names.emplace_back("interface_curvature_variations");
         names.emplace_back("surface_tensions");
         names.emplace_back("growth_rates");
+        names.emplace_back("modelled_growth_rates");
         return names;
       }
     }
@@ -166,9 +171,14 @@ namespace aspect
         std::vector<double> surface_tensions;
 
         /**
-         * Growth rate of magmatic shear bands.
+         * Growth rate of magmatic shear bands computed analytically.
          */
         std::vector<double> growth_rates;
+
+        /**
+         * Growth rate of magmatic shear bands computed numerically.
+         */
+        std::vector<double> modelled_growth_rates;
     };
 
 
@@ -180,14 +190,15 @@ namespace aspect
       interface_curvatures(n_points, numbers::signaling_nan<double>()),
       interface_curvature_variations(n_points, numbers::signaling_nan<double>()),
       surface_tensions(n_points, numbers::signaling_nan<double>()),
-      growth_rates(n_points, numbers::signaling_nan<double>())
+      growth_rates(n_points, numbers::signaling_nan<double>()),
+	  modelled_growth_rates(n_points, numbers::signaling_nan<double>())
     {}
 
     template <int dim>
     std::vector<double>
     SurfaceTensionOutputs<dim>::get_nth_output(const unsigned int idx) const
     {
-      AssertIndexRange (idx, 5);
+      AssertIndexRange (idx, 6);
       switch (idx)
         {
           case 0:
@@ -204,6 +215,9 @@ namespace aspect
 
           case 4:
             return growth_rates;
+
+          case 5:
+            return modelled_growth_rates;
 
           default:
             AssertThrow(false, ExcInternalError());
@@ -270,7 +284,7 @@ namespace aspect
 
           for (unsigned int i=0; i<in.position.size(); ++i)
             {
-              double porosity = std::max(in.composition[i][porosity_idx],0.0);
+              const double porosity = std::max(in.composition[i][porosity_idx],0.0);
               out.viscosities[i] = eta_0 * std::exp(-porosity_exponent*(porosity - background_porosity));
 
               if (in.strain_rate.size())
@@ -306,18 +320,41 @@ namespace aspect
                 melt_out->permeabilities[i]= reference_permeability * std::pow(porosity,permeability_exponent) * std::pow(grainsize,2);
                 melt_out->fluid_densities[i]= reference_rho_f;
                 melt_out->fluid_density_gradients[i] = 0.0;
+
+                porosity = std::max(in.composition[i][porosity_idx],1e-8);
+                melt_out->compaction_viscosities[i] = 10. * eta_0 * pow(porosity/background_porosity,-1.0);
               }
 
           // fill tension outputs if they exist
           SurfaceTensionOutputs<dim> *tension_out = out.template get_additional_output<SurfaceTensionOutputs<dim> >();
           if (tension_out != NULL)
+          {
+              // Prepare the field function
+        	  const QGauss<dim> quadrature_formula (this->get_fe().base_element(this->introspection().base_elements.velocities).degree+1);
+        	  Functions::FEFieldFunction<dim, DoFHandler<dim>, LinearAlgebra::BlockVector>
+        	  fe_values(this->get_dof_handler(), this->get_solution(), this->get_mapping());
+
+        	  std::vector<double> velocity_divergences(in.position.size());
+
+              for(unsigned int d=0; d<1; ++d)
+              {
+              fe_values.set_active_cell(in.current_cell);
+              std::vector<Tensor<1,dim> > velocity_gradients(in.position.size());
+              fe_values.gradient_list(in.position,
+            		               velocity_gradients,
+								   this->introspection().component_indices.velocities[d]);
+              for (unsigned int i=0; i<in.position.size(); ++i)
+                velocity_divergences[i]+= velocity_gradients[i][d*(1+dim)];
+              }
+
             for (unsigned int i=0; i<in.position.size(); ++i)
               {
-                double porosity = std::max(in.composition[i][porosity_idx],0.0);
+                const double porosity = std::max(in.composition[i][porosity_idx],0.0);
 
-                tension_out->interface_areas[i] = geometry_factor * surface_tension / grainsize + porosity_area_factor * std::pow(porosity,0.5);
-                tension_out->interface_curvatures[i] = 0.5 * porosity_area_factor * std::pow(porosity,-0.5);
-                tension_out->interface_curvature_variations[i]= -0.25 * porosity_area_factor * std::pow(porosity,-1.5);
+                const double area_prefactor = geometry_factor * surface_tension / grainsize;
+                tension_out->interface_areas[i] = area_prefactor * (1 + porosity_area_factor * std::pow(porosity,0.5));
+                tension_out->interface_curvatures[i] = 0.5 * area_prefactor * porosity_area_factor * std::pow(porosity,-0.5);
+                tension_out->interface_curvature_variations[i]= -0.25 * area_prefactor * porosity_area_factor * std::pow(porosity,-1.5);
                 tension_out->surface_tensions[i] = surface_tension;
 
                 // set up all the constants we need to compute the growth rate
@@ -337,7 +374,7 @@ namespace aspect
                 const double nu = eta_0 / (B_0 + 4./3. * eta_0);
                 const double Gamma = tension_out->surface_tensions[i] * (1.0 - background_porosity) * tension_out->interface_curvature_variations[i]
                                      / (2. * second_strain_rate_invariant * eta_0);
-                const double D = 1./(tension_out->interface_curvature_variations[i] * tension_out->interface_areas[i] * std::pow(compaction_length,2));
+                const double D = 1./(tension_out->interface_curvature_variations[i] * tension_out->interface_areas[i] * pow(compaction_length,2));
                 const double Q = porosity_exponent / Gamma;
                 const double q = 1.0 - 1./strain_rate_exponent;
 
@@ -348,11 +385,35 @@ namespace aspect
                 const double wave_number = melt_bands.get_wave_number();
                 const double band_angle  = melt_bands.get_initial_band_angle();
 
-                tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
-                                               * (Q * sin(2*band_angle) - (1. + D*std::pow(wave_number,2)) * (1. - q * std::pow(cos(2*band_angle),2)))
-                                               / ((1. + std::pow(wave_number,2)) * (1. - q * std::pow(cos(2*band_angle),2)) - q * nu * std::pow(wave_number,2) * std::pow(sin(2*band_angle),2));
-              }
+//                std::cout << "nu = " << nu
+//                		  << ", D = " << D
+//						  << ", Q = " << Q
+//						  << ", q = " << q
+//						  << ", Gamma = " << Gamma
+//						  << ", wave_number = " << wave_number
+//						  << ", sine 2 band_angle = " << sin(2*band_angle)
+//						  << ", prefactor = " << (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
+//						  << ", numerator = " << (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
+//						  << ", D = " << ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2))
+//						  << std::endl;
 
+                tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
+                                               * (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
+                                               / ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2));
+
+                // we multiply by 2 epsilon_0 to get back to real units
+                tension_out->growth_rates[i] *= (2. * reference_strain_rate_invariant);
+
+                if(in.strain_rate.size())
+                {
+
+                  tension_out->modelled_growth_rates[i] = (1.0 - background_porosity) / (melt_bands.get_wave_amplitude() * background_porosity)
+				                                          * velocity_divergences[i];
+                }
+
+                tension_out->surface_tensions[i] = 0.0;
+              }
+          }
         }
 
       private:
@@ -528,6 +589,14 @@ namespace aspect
       AssertThrow(amplitude < 1.0,
                   ExcMessage("Amplitude of the melt bands must be smaller "
                              "than the background porosity."));
+    }
+
+
+    template <int dim>
+    double
+	MeltBandsInitialCondition<dim>::get_wave_amplitude () const
+    {
+      return amplitude;
     }
 
 
