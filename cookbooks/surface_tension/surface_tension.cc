@@ -33,7 +33,6 @@
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/function_lib.h>
 #include <deal.II/fe/fe_values.h>
-#include <deal.II/numerics/fe_field_function.h>
 #include <deal.II/numerics/error_estimator.h>
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/base/table.h>
@@ -191,7 +190,7 @@ namespace aspect
       interface_curvature_variations(n_points, numbers::signaling_nan<double>()),
       surface_tensions(n_points, numbers::signaling_nan<double>()),
       growth_rates(n_points, numbers::signaling_nan<double>()),
-	  modelled_growth_rates(n_points, numbers::signaling_nan<double>())
+      modelled_growth_rates(n_points, numbers::signaling_nan<double>())
     {}
 
     template <int dim>
@@ -313,107 +312,105 @@ namespace aspect
           if (melt_out != NULL)
             for (unsigned int i=0; i<in.position.size(); ++i)
               {
-                double porosity = std::max(in.composition[i][porosity_idx],0.0);
+                const double porosity = std::max(in.composition[i][porosity_idx],0.1e-8);
 
                 melt_out->compaction_viscosities[i] = std::pow(1.-porosity,2) * 5./3. * eta_0;
                 melt_out->fluid_viscosities[i]= eta_f;
                 melt_out->permeabilities[i]= reference_permeability * std::pow(porosity,permeability_exponent) * std::pow(grainsize,2);
                 melt_out->fluid_densities[i]= reference_rho_f;
                 melt_out->fluid_density_gradients[i] = 0.0;
-
-                porosity = std::max(in.composition[i][porosity_idx],1e-8);
-                melt_out->compaction_viscosities[i] = 10. * eta_0 * pow(porosity/background_porosity,-1.0);
               }
 
           // fill tension outputs if they exist
           SurfaceTensionOutputs<dim> *tension_out = out.template get_additional_output<SurfaceTensionOutputs<dim> >();
           if (tension_out != NULL)
-          {
-              // Prepare the field function
-        	  const QGauss<dim> quadrature_formula (this->get_fe().base_element(this->introspection().base_elements.velocities).degree+1);
-        	  Functions::FEFieldFunction<dim, DoFHandler<dim>, LinearAlgebra::BlockVector>
-        	  fe_values(this->get_dof_handler(), this->get_solution(), this->get_mapping());
+            {
+              const QGauss<dim> quadrature_formula (this->get_fe().base_element(this->introspection().base_elements.velocities).degree+1);
+              FEValues<dim> fe_values (this->get_mapping(),
+                                       this->get_fe(),
+                                       quadrature_formula,
+                                       update_gradients);
+              std::vector<double> velocity_divergences(quadrature_formula.size());
 
-        	  std::vector<double> velocity_divergences(in.position.size());
+              fe_values.reinit (in.current_cell);
+              fe_values[this->introspection().extractors.velocities].get_function_divergences (this->get_solution(),
+                  velocity_divergences);
 
-              for(unsigned int d=0; d<1; ++d)
-              {
-              fe_values.set_active_cell(in.current_cell);
-              std::vector<Tensor<1,dim> > velocity_gradients(in.position.size());
-              fe_values.gradient_list(in.position,
-            		               velocity_gradients,
-								   this->introspection().component_indices.velocities[d]);
-              for (unsigned int i=0; i<in.position.size(); ++i)
-                velocity_divergences[i]+= velocity_gradients[i][d*(1+dim)];
-              }
-
-            for (unsigned int i=0; i<in.position.size(); ++i)
-              {
-                const double porosity = std::max(in.composition[i][porosity_idx],0.0);
-
-                const double area_prefactor = geometry_factor * surface_tension / grainsize;
-                tension_out->interface_areas[i] = area_prefactor * (1 + porosity_area_factor * std::pow(porosity,0.5));
-                tension_out->interface_curvatures[i] = 0.5 * area_prefactor * porosity_area_factor * std::pow(porosity,-0.5);
-                tension_out->interface_curvature_variations[i]= -0.25 * area_prefactor * porosity_area_factor * std::pow(porosity,-1.5);
-                tension_out->surface_tensions[i] = surface_tension;
-
-                // set up all the constants we need to compute the growth rate
-                const double c_0 = eta_f / (reference_permeability * std::pow(grainsize,2)) * std::pow(porosity,2.-permeability_exponent);
-                const double B_0 = std::pow(1.-background_porosity,2) * 5./3. * eta_0;
-                const double compaction_length = sqrt(std::pow(background_porosity,2) * (B_0 + 4./3. * eta_0) / c_0);
-
-                double second_strain_rate_invariant = reference_strain_rate_invariant;
-                if (in.strain_rate.size())
-                  {
-                    const SymmetricTensor<2,dim> shear_strain_rate = in.strain_rate[i]
-                                                                     - 1./dim * trace(in.strain_rate[i]) * unit_symmetric_tensor<dim>();
-                    if (std::abs(second_invariant(shear_strain_rate)) > 100. * std::numeric_limits<double>::epsilon())
-                      second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
-                  }
-
-                const double nu = eta_0 / (B_0 + 4./3. * eta_0);
-                const double Gamma = tension_out->surface_tensions[i] * (1.0 - background_porosity) * tension_out->interface_curvature_variations[i]
-                                     / (2. * second_strain_rate_invariant * eta_0);
-                const double D = 1./(tension_out->interface_curvature_variations[i] * tension_out->interface_areas[i] * pow(compaction_length,2));
-                const double Q = porosity_exponent / Gamma;
-                const double q = 1.0 - 1./strain_rate_exponent;
-
-                const InitialComposition::MeltBandsInitialCondition<dim> &melt_bands
-                  = this->get_initial_composition_manager().template
-                    get_matching_initial_composition_model<InitialComposition::MeltBandsInitialCondition<dim> > ();
-
-                const double wave_number = melt_bands.get_wave_number();
-                const double band_angle  = melt_bands.get_initial_band_angle();
-
-//                std::cout << "nu = " << nu
-//                		  << ", D = " << D
-//						  << ", Q = " << Q
-//						  << ", q = " << q
-//						  << ", Gamma = " << Gamma
-//						  << ", wave_number = " << wave_number
-//						  << ", sine 2 band_angle = " << sin(2*band_angle)
-//						  << ", prefactor = " << (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
-//						  << ", numerator = " << (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
-//						  << ", D = " << ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2))
-//						  << std::endl;
-
-                tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
-                                               * (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
-                                               / ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2));
-
-                // we multiply by 2 epsilon_0 to get back to real units
-                tension_out->growth_rates[i] *= (2. * reference_strain_rate_invariant);
-
-                if(in.strain_rate.size())
+              double max_divergence = 0;
+              for (unsigned int i=0; i<quadrature_formula.size(); ++i)
                 {
-
-                  tension_out->modelled_growth_rates[i] = (1.0 - background_porosity) / (melt_bands.get_wave_amplitude() * background_porosity)
-				                                          * velocity_divergences[i];
+                  if (std::abs(velocity_divergences[i]) > std::abs(max_divergence))
+                    max_divergence = velocity_divergences[i];
                 }
 
-                tension_out->surface_tensions[i] = 0.0;
-              }
-          }
+              for (unsigned int i=0; i<in.position.size(); ++i)
+                {
+                  const double porosity = std::max(in.composition[i][porosity_idx],0.0);
+
+                  const double area_prefactor = geometry_factor * surface_tension / grainsize;
+                  tension_out->interface_areas[i] = area_prefactor * (1 + porosity_area_factor * std::pow(porosity,0.5));
+                  tension_out->interface_curvatures[i] = 0.5 * area_prefactor * porosity_area_factor * std::pow(porosity,-0.5);
+                  tension_out->interface_curvature_variations[i]= -0.25 * area_prefactor * porosity_area_factor * std::pow(porosity,-1.5);
+                  tension_out->surface_tensions[i] = surface_tension;
+
+                  // set up all the constants we need to compute the growth rate
+                  const double c_0 = eta_f / (reference_permeability * std::pow(grainsize,2)) * std::pow(porosity,2.-permeability_exponent);
+                  const double B_0 = std::pow(1.-background_porosity,2) * 5./3. * eta_0;
+                  const double compaction_length = sqrt(std::pow(background_porosity,2) * (B_0 + 4./3. * eta_0) / c_0);
+
+                  double second_strain_rate_invariant = reference_strain_rate_invariant;
+                  if (in.strain_rate.size())
+                    {
+                      const SymmetricTensor<2,dim> shear_strain_rate = in.strain_rate[i]
+                                                                       - 1./dim * trace(in.strain_rate[i]) * unit_symmetric_tensor<dim>();
+                      if (std::abs(second_invariant(shear_strain_rate)) > 100. * std::numeric_limits<double>::epsilon())
+                        second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
+                    }
+
+                  const double nu = eta_0 / (B_0 + 4./3. * eta_0);
+                  const double Gamma = tension_out->surface_tensions[i] * (1.0 - background_porosity) * tension_out->interface_curvature_variations[i]
+                                       / (2. * second_strain_rate_invariant * eta_0);
+                  double D = 1./(tension_out->interface_curvature_variations[i] * tension_out->interface_areas[i] * pow(compaction_length,2));
+                  const double Q = porosity_exponent / Gamma;
+                  const double q = 1.0 - 1./strain_rate_exponent;
+
+                  const InitialComposition::MeltBandsInitialCondition<dim> &melt_bands
+                    = this->get_initial_composition_manager().template
+                      get_matching_initial_composition_model<InitialComposition::MeltBandsInitialCondition<dim> > ();
+
+                  const double wave_number = melt_bands.get_wave_number();
+                  const double band_angle  = melt_bands.get_initial_band_angle();
+
+//                std::cout << "nu = " << nu
+//                      << ", D = " << D
+//              << ", Q = " << Q
+//              << ", q = " << q
+//              << ", Gamma = " << Gamma
+//              << ", wave_number = " << wave_number
+//              << ", sine 2 band_angle = " << sin(2*band_angle)
+//              << ", prefactor = " << (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
+//              << ", numerator = " << (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
+//              << ", D = " << ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2))
+//              << std::endl;
+
+                  D = 0;
+
+                  tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
+                                                 * (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
+                                                 / ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2));
+
+                  // tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * porosity_exponent * std::pow(wave_number,2.) * sin(2.*band_angle) / (1. + pow(wave_number,2.));
+
+                  // we multiply by 2 epsilon_0 to get back to real units
+                  tension_out->growth_rates[i] *= (2. * reference_strain_rate_invariant);
+
+                  if (in.strain_rate.size())
+                    tension_out->modelled_growth_rates[i] = (1.0 - background_porosity) / (melt_bands.get_wave_amplitude() * background_porosity)
+                                                            * max_divergence;
+
+                  tension_out->surface_tensions[i] = 0.0;
+                }
+            }
         }
 
       private:
@@ -594,7 +591,7 @@ namespace aspect
 
     template <int dim>
     double
-	MeltBandsInitialCondition<dim>::get_wave_amplitude () const
+    MeltBandsInitialCondition<dim>::get_wave_amplitude () const
     {
       return amplitude;
     }
