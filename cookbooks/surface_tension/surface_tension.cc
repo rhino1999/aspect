@@ -350,7 +350,7 @@ namespace aspect
                   const double area_prefactor = geometry_factor * surface_tension / grainsize;
                   tension_out->interface_areas[i] = area_prefactor * (1 + porosity_area_factor * std::pow(porosity,0.5));
                   tension_out->interface_curvatures[i] = 0.5 * area_prefactor * porosity_area_factor * std::pow(porosity,-0.5);
-                  tension_out->interface_curvature_variations[i]= -0.25 * area_prefactor * porosity_area_factor * std::pow(porosity,-1.5);
+                  tension_out->interface_curvature_variations[i] = -0.25 * area_prefactor * porosity_area_factor * std::pow(porosity,-1.5);
                   tension_out->surface_tensions[i] = surface_tension;
 
                   // set up all the constants we need to compute the growth rate
@@ -378,28 +378,20 @@ namespace aspect
                     = this->get_initial_composition_manager().template
                       get_matching_initial_composition_model<InitialComposition::MeltBandsInitialCondition<dim> > ();
 
-                  const double wave_number = melt_bands.get_wave_number();
+                  const double wave_number = melt_bands.get_wave_number()*compaction_length;
                   const double band_angle  = melt_bands.get_initial_band_angle();
 
-//                std::cout << "nu = " << nu
-//                      << ", D = " << D
-//              << ", Q = " << Q
+                  std::cout << "nu = " << nu
+                            << ", D = " << D
+                            << ", Q = " << Q
 //              << ", q = " << q
 //              << ", Gamma = " << Gamma
-//              << ", wave_number = " << wave_number
-//              << ", sine 2 band_angle = " << sin(2*band_angle)
-//              << ", prefactor = " << (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
-//              << ", numerator = " << (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
-//              << ", D = " << ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2))
-//              << std::endl;
-
-                  D = 0;
+                            << ", k^2 = " << wave_number *wave_number
+                            << std::endl;
 
                   tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
                                                  * (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
                                                  / ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2));
-
-                  // tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * porosity_exponent * std::pow(wave_number,2.) * sin(2.*band_angle) / (1. + pow(wave_number,2.));
 
                   // we multiply by 2 epsilon_0 to get back to real units
                   tension_out->growth_rates[i] *= (2. * reference_strain_rate_invariant);
@@ -407,8 +399,6 @@ namespace aspect
                   if (in.strain_rate.size())
                     tension_out->modelled_growth_rates[i] = (1.0 - background_porosity) / (melt_bands.get_wave_amplitude() * background_porosity)
                                                             * max_divergence;
-
-                  tension_out->surface_tensions[i] = 0.0;
                 }
             }
         }
@@ -720,12 +710,9 @@ namespace aspect
           const unsigned int n_q_points           = scratch.finite_element_values.n_quadrature_points;
 
           // We need the spatial derivatives of the porosity to compute the surface tension
-          std::vector<Tensor<1,dim> > porosity_gradients(n_q_points, numbers::signaling_nan<Tensor<1,dim>>());
           std::vector<double> porosity_laplacians(n_q_points, numbers::signaling_nan<double>());
 
           const unsigned int porosity_index = introspection.compositional_index_for_name("porosity");
-          scratch.finite_element_values[introspection.extractors.compositional_fields[porosity_index]].get_function_gradients (
-            this->get_solution(), porosity_gradients);
           scratch.finite_element_values[introspection.extractors.compositional_fields[porosity_index]].get_function_laplacians (
             this->get_solution(), porosity_laplacians);
 
@@ -782,8 +769,8 @@ namespace aspect
                                          // term that describes pressure gradients caused by variations
                                          // in the surface tension on effective macroscopic (diffuse)
                                          // interfaces associated with sharp gradients in the porosity
-                                         (1.0 / tension->interface_areas[q]
-                                          * porosity_laplacians[q] * scratch.div_phi_u[i]))
+                                         (porosity_laplacians[q] / tension->interface_areas[q]
+                                          * scratch.div_phi_u[i]))
                                        )
                                        * JxW;
                 }
