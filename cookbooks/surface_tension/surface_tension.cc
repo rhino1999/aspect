@@ -259,6 +259,13 @@ namespace aspect
         get_background_porosity () const;
 
         /**
+         * Initialization function.
+         * Outputs the scaling law parameters.
+         */
+        void
+        initialize ();
+
+        /**
          * Declare the parameters this class takes through input files.
          */
         static
@@ -373,39 +380,8 @@ namespace aspect
                       const double B_0 = std::pow(1.-background_porosity,2) * 5./3. * eta_0;
                       const double compaction_length = sqrt(std::pow(background_porosity,2) * (B_0 + 4./3. * eta_0) / c_0);
 
-                      double second_strain_rate_invariant = reference_strain_rate_invariant;
-                      if (in.strain_rate.size())
-                        {
-                          const SymmetricTensor<2,dim> shear_strain_rate = in.strain_rate[i]
-                                                                           - 1./dim * trace(in.strain_rate[i]) * unit_symmetric_tensor<dim>();
-                          if (std::abs(second_invariant(shear_strain_rate)) > 100. * std::numeric_limits<double>::epsilon())
-                            second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
-                        }
-
-                      const double nu = eta_0 / (B_0 + 4./3. * eta_0);
-                      const double Gamma = tension_out->surface_tensions[i] * (1.0 - background_porosity) * tension_out->interface_curvature_variations[i]
-                                           / (2. * second_strain_rate_invariant * eta_0);
-                      double D = 1./(tension_out->interface_curvature_variations[i] * tension_out->interface_areas[i] * pow(compaction_length,2));
-
-                      const double b = use_coble_creep ? 1./(sqrt(background_porosity*0.24)-background_porosity) : porosity_exponent;
-                      const double Q = b / Gamma;
-                      const double q = 1.0 - 1./strain_rate_exponent;
-
                       const double wave_number = melt_bands.get_wave_number()*compaction_length;
                       const double band_angle  = melt_bands.get_initial_band_angle();
-                      const double least_stable_mode = sqrt(sqrt(1+(Q-1)/D)-1);
-
-                      // only output for first time step, first processor
-                      if (this->get_timestep_number() == 0)
-                        {
-                          std::cout << "nu = " << nu
-                                    << ", D = " << D
-                                    << ", Q = " << Q
-                                    << ", delta = " << compaction_length
-                                    << ", lambda = " << 2 * numbers::PI *compaction_length / least_stable_mode
-                                    << ", k^2 = " << wave_number *wave_number
-                                    << std::endl;
-                        }
 
                       tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
                                                      * (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
@@ -447,6 +423,15 @@ namespace aspect
 
         bool compute_growth_rate;
         bool use_coble_creep;
+
+        // Parameters needed to compute the growth rate and the least stable mode.
+        // These parameters correspond to the ones with the same name in Bercovici and Rudge (2016)
+        // (for full reference, see class documentation).
+        double nu;       // viscosity ratio
+        double Gamma;    // ratio of surface tension to viscous stresses
+        double Q;        // parameter controlling the dependence of growth rate on the band angle
+        double q;        // strain rate dependence of the viscosity
+        double D;        // parameter controlling the dependence of growth rate on the wave number
     };
 
     template <int dim>
@@ -454,6 +439,42 @@ namespace aspect
     ShearBandsTensionMaterial<dim>::get_background_porosity () const
     {
       return background_porosity;
+    }
+
+
+    template <int dim>
+    void
+    ShearBandsTensionMaterial<dim>::initialize ()
+    {
+      // set up all the constants we need to compute the growth rate
+      const double c_0 = eta_f / (reference_permeability * std::pow(grainsize,2)) * std::pow(background_porosity,2.-permeability_exponent);
+      const double B_0 = std::pow(1.-background_porosity,2) * 5./3. * eta_0;
+      const double compaction_length = sqrt(std::pow(background_porosity,2) * (B_0 + 4./3. * eta_0) / c_0);
+
+      const double area_prefactor = geometry_factor * surface_tension / grainsize;
+      const double interface_curvature_variation = -0.25 * area_prefactor * porosity_area_factor * std::pow(background_porosity,-1.5);
+      const double interface_area = area_prefactor * (1 + porosity_area_factor * std::pow(background_porosity,0.5));
+
+      nu = eta_0 / (B_0 + 4./3. * eta_0);
+      Gamma = surface_tension * (1.0 - background_porosity) * interface_curvature_variation / (2. * reference_strain_rate_invariant * eta_0);
+      D = 1./(interface_curvature_variation * interface_area * pow(compaction_length,2));
+
+      const double b = use_coble_creep ? 1./(sqrt(background_porosity*0.24)-background_porosity) : porosity_exponent;
+      Q = b / Gamma;
+      q = 1.0 - 1./strain_rate_exponent;
+
+      const double least_stable_mode = sqrt(sqrt(1+(Q-1)/D)-1);
+
+      this->get_pcout() << std::endl;
+      this->get_pcout() << "   Scaling parameters: nu = " << nu
+                        << ", D = " << D
+						<< ", Q = " << Q
+						<< ", delta = " << compaction_length
+						<< ", lambda = " << 2 * numbers::PI *compaction_length / least_stable_mode
+						<< std::endl
+						<< std::endl;
+
+      return;
     }
 
 
