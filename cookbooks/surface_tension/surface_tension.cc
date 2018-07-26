@@ -87,10 +87,12 @@ namespace aspect
         get_initial_band_angle () const;
 
       private:
-        double amplitude;
+        double wave_amplitude;
+        double noise_amplitude;
         double background_porosity;
         double wave_number;
         double initial_band_angle;
+        Functions::InterpolatedUniformGridData<dim> *interpolate_noise;
     };
   }
 
@@ -284,7 +286,10 @@ namespace aspect
           for (unsigned int i=0; i<in.position.size(); ++i)
             {
               const double porosity = std::max(in.composition[i][porosity_idx],0.0);
-              out.viscosities[i] = eta_0 * std::exp(-porosity_exponent*(porosity - background_porosity));
+              if (use_coble_creep)
+                out.viscosities[i] = eta_0 * pow(1.-sqrt(background_porosity/0.24),-2.) * pow(1.-sqrt(porosity/0.24),2.);
+              else
+                out.viscosities[i] = eta_0 * std::exp(-porosity_exponent*(porosity - background_porosity));
 
               if (in.strain_rate.size())
                 {
@@ -312,9 +317,9 @@ namespace aspect
           if (melt_out != NULL)
             for (unsigned int i=0; i<in.position.size(); ++i)
               {
-                const double porosity = std::max(in.composition[i][porosity_idx],0.1e-8);
+                const double porosity = std::max(in.composition[i][porosity_idx],0.0);
 
-                melt_out->compaction_viscosities[i] = std::pow(1.-porosity,2) * 5./3. * eta_0;
+                melt_out->compaction_viscosities[i] = std::pow(1.-porosity,2) * 5./3. * out.viscosities[i];
                 melt_out->fluid_viscosities[i]= eta_f;
                 melt_out->permeabilities[i]= reference_permeability * std::pow(porosity,permeability_exponent) * std::pow(grainsize,2);
                 melt_out->fluid_densities[i]= reference_rho_f;
@@ -346,59 +351,78 @@ namespace aspect
               for (unsigned int i=0; i<in.position.size(); ++i)
                 {
                   const double porosity = std::max(in.composition[i][porosity_idx],0.0);
+                  const double cutoff_porosity = std::max(in.composition[i][porosity_idx],1.e-7);
 
                   const double area_prefactor = geometry_factor * surface_tension / grainsize;
                   tension_out->interface_areas[i] = area_prefactor * (1 + porosity_area_factor * std::pow(porosity,0.5));
-                  tension_out->interface_curvatures[i] = 0.5 * area_prefactor * porosity_area_factor * std::pow(porosity,-0.5);
-                  tension_out->interface_curvature_variations[i] = -0.25 * area_prefactor * porosity_area_factor * std::pow(porosity,-1.5);
+                  tension_out->interface_curvatures[i] = 0.5 * area_prefactor * porosity_area_factor * std::pow(cutoff_porosity,-0.5);
+                  tension_out->interface_curvature_variations[i] = -0.25 * area_prefactor * porosity_area_factor * std::pow(cutoff_porosity,-1.5);
                   tension_out->surface_tensions[i] = surface_tension;
 
-                  // set up all the constants we need to compute the growth rate
-                  const double c_0 = eta_f / (reference_permeability * std::pow(grainsize,2)) * std::pow(porosity,2.-permeability_exponent);
-                  const double B_0 = std::pow(1.-background_porosity,2) * 5./3. * eta_0;
-                  const double compaction_length = sqrt(std::pow(background_porosity,2) * (B_0 + 4./3. * eta_0) / c_0);
-
-                  double second_strain_rate_invariant = reference_strain_rate_invariant;
-                  if (in.strain_rate.size())
+                  if (dynamic_cast<const InitialComposition::MeltBandsInitialCondition<dim> *>(&this->get_initial_composition_manager().template
+                                                                                               get_matching_initial_composition_model<InitialComposition::MeltBandsInitialCondition<dim> > ()) != NULL
+                      &&
+                      compute_growth_rate)
                     {
-                      const SymmetricTensor<2,dim> shear_strain_rate = in.strain_rate[i]
-                                                                       - 1./dim * trace(in.strain_rate[i]) * unit_symmetric_tensor<dim>();
-                      if (std::abs(second_invariant(shear_strain_rate)) > 100. * std::numeric_limits<double>::epsilon())
-                        second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
+                      const InitialComposition::MeltBandsInitialCondition<dim> &melt_bands
+                        = this->get_initial_composition_manager().template
+                          get_matching_initial_composition_model<InitialComposition::MeltBandsInitialCondition<dim> > ();
+
+                      // set up all the constants we need to compute the growth rate
+                      const double c_0 = eta_f / (reference_permeability * std::pow(grainsize,2)) * std::pow(porosity,2.-permeability_exponent);
+                      const double B_0 = std::pow(1.-background_porosity,2) * 5./3. * eta_0;
+                      const double compaction_length = sqrt(std::pow(background_porosity,2) * (B_0 + 4./3. * eta_0) / c_0);
+
+                      double second_strain_rate_invariant = reference_strain_rate_invariant;
+                      if (in.strain_rate.size())
+                        {
+                          const SymmetricTensor<2,dim> shear_strain_rate = in.strain_rate[i]
+                                                                           - 1./dim * trace(in.strain_rate[i]) * unit_symmetric_tensor<dim>();
+                          if (std::abs(second_invariant(shear_strain_rate)) > 100. * std::numeric_limits<double>::epsilon())
+                            second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
+                        }
+
+                      const double nu = eta_0 / (B_0 + 4./3. * eta_0);
+                      const double Gamma = tension_out->surface_tensions[i] * (1.0 - background_porosity) * tension_out->interface_curvature_variations[i]
+                                           / (2. * second_strain_rate_invariant * eta_0);
+                      double D = 1./(tension_out->interface_curvature_variations[i] * tension_out->interface_areas[i] * pow(compaction_length,2));
+
+                      const double b = use_coble_creep ? 1./(sqrt(background_porosity*0.24)-background_porosity) : porosity_exponent;
+                      const double Q = b / Gamma;
+                      const double q = 1.0 - 1./strain_rate_exponent;
+
+                      const double wave_number = melt_bands.get_wave_number()*compaction_length;
+                      const double band_angle  = melt_bands.get_initial_band_angle();
+                      const double least_stable_mode = sqrt(sqrt(1+(Q-1)/D)-1);
+
+                      // only output for first time step, first processor
+                      if (this->get_timestep_number() == 0)
+                        {
+                          std::cout << "nu = " << nu
+                                    << ", D = " << D
+                                    << ", Q = " << Q
+                                    << ", delta = " << compaction_length
+                                    << ", lambda = " << 2 * numbers::PI *compaction_length / least_stable_mode
+                                    << ", k^2 = " << wave_number *wave_number
+                                    << std::endl;
+                        }
+
+                      tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
+                                                     * (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
+                                                     / ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2));
+
+                      // we multiply by 2 epsilon_0 to get back to real units
+                      tension_out->growth_rates[i] *= (2. * reference_strain_rate_invariant);
+
+                      if (in.strain_rate.size())
+                        tension_out->modelled_growth_rates[i] = (1.0 - background_porosity) / (melt_bands.get_wave_amplitude() * background_porosity)
+                                                                * max_divergence;
                     }
-
-                  const double nu = eta_0 / (B_0 + 4./3. * eta_0);
-                  const double Gamma = tension_out->surface_tensions[i] * (1.0 - background_porosity) * tension_out->interface_curvature_variations[i]
-                                       / (2. * second_strain_rate_invariant * eta_0);
-                  double D = 1./(tension_out->interface_curvature_variations[i] * tension_out->interface_areas[i] * pow(compaction_length,2));
-                  const double Q = porosity_exponent / Gamma;
-                  const double q = 1.0 - 1./strain_rate_exponent;
-
-                  const InitialComposition::MeltBandsInitialCondition<dim> &melt_bands
-                    = this->get_initial_composition_manager().template
-                      get_matching_initial_composition_model<InitialComposition::MeltBandsInitialCondition<dim> > ();
-
-                  const double wave_number = melt_bands.get_wave_number()*compaction_length;
-                  const double band_angle  = melt_bands.get_initial_band_angle();
-
-                  std::cout << "nu = " << nu
-                            << ", D = " << D
-                            << ", Q = " << Q
-//              << ", q = " << q
-//              << ", Gamma = " << Gamma
-                            << ", k^2 = " << wave_number *wave_number
-                            << std::endl;
-
-                  tension_out->growth_rates[i] = (1.0 - background_porosity) * nu * Gamma * std::pow(wave_number,2)
-                                                 * (Q * sin(2*band_angle) - (1. + D*pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)))
-                                                 / ((1. + pow(wave_number,2)) * (1. - q * pow(cos(2*band_angle),2)) - q * nu * pow(wave_number,2) * pow(sin(2*band_angle),2));
-
-                  // we multiply by 2 epsilon_0 to get back to real units
-                  tension_out->growth_rates[i] *= (2. * reference_strain_rate_invariant);
-
-                  if (in.strain_rate.size())
-                    tension_out->modelled_growth_rates[i] = (1.0 - background_porosity) / (melt_bands.get_wave_amplitude() * background_porosity)
-                                                            * max_divergence;
+                  else
+                    {
+                      tension_out->growth_rates[i] = 0.0;
+                      tension_out->modelled_growth_rates[i] = 0.0;
+                    }
                 }
             }
         }
@@ -420,6 +444,9 @@ namespace aspect
         double geometry_factor;
         double porosity_area_factor;
         double surface_tension;
+
+        bool compute_growth_rate;
+        bool use_coble_creep;
     };
 
     template <int dim>
@@ -493,6 +520,15 @@ namespace aspect
                              Patterns::Double(0),
                              "The surface tension . "
                              "Units: Pa m.");
+          prm.declare_entry ("Compute growth rate", "false",
+                             Patterns::Bool (),
+                             "Whether to compute the shear bands growth rates. "
+                             "This can only be done for non-zero wave amplitude in the shear "
+                             "bands initial condition. ");
+          prm.declare_entry ("Use Coble creep", "false",
+                             Patterns::Bool (),
+                             "Whether to compute the shear viscosity assuming Coble creep or "
+                             "using the usual exponential dependence on the porosity. ");
         }
         prm.leave_subsection();
       }
@@ -524,6 +560,8 @@ namespace aspect
           geometry_factor            = prm.get_double ("Geometry factor");
           porosity_area_factor       = prm.get_double ("Porosity area factor");
           surface_tension            = prm.get_double ("Surface tension");
+          compute_growth_rate        = prm.get_bool ("Compute growth rate");
+          use_coble_creep            = prm.get_bool ("Use Coble creep");
         }
         prm.leave_subsection();
       }
@@ -573,9 +611,66 @@ namespace aspect
         }
 
 
-      AssertThrow(amplitude < 1.0,
+      AssertThrow(wave_amplitude < 1.0,
                   ExcMessage("Amplitude of the melt bands must be smaller "
                              "than the background porosity."));
+
+      // get the model domain size from the geometry model
+      std::array<std::pair<double,double>,dim> grid_extents;
+      if (dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model()) != NULL)
+        {
+          const GeometryModel::Box<dim> *
+          geometry_model
+            = dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model());
+
+          Point<dim> extents = geometry_model->get_extents();
+          for (unsigned int d=0; d<dim; ++d)
+            {
+              grid_extents[d].first=0;
+              grid_extents[d].second=extents[d];
+            }
+        }
+      else
+        {
+          AssertThrow(false,
+                      ExcMessage("Initial condition shear bands only works with the box geometry model."));
+        }
+
+
+      // determine the size of the white noise table based on the desired wave length
+      std::array<unsigned int,dim> grid_intervals;
+
+      TableIndices<dim> size_idx;
+      for (unsigned int d=0; d<dim; ++d)
+        {
+          grid_intervals[d] = round(grid_extents[d].second * wave_number);
+          size_idx[d] = grid_intervals[d]+1;
+        }
+
+      Table<dim,double> white_noise;
+      white_noise.TableBase<dim,double>::reinit(size_idx);
+
+      // use a fixed number as seed for random generator
+      // this is important if we run the code on more than 1 processor
+      std::srand(0);
+
+      // compute the random white noise on the resolution given in the input file...
+      TableIndices<dim> idx;
+
+      for (unsigned int i=0; i<white_noise.size()[0]; ++i)
+        {
+          idx[0] = i;
+          for (unsigned int j=0; j<white_noise.size()[1]; ++j)
+            {
+              idx[1] = j;
+              white_noise(idx) = background_porosity * noise_amplitude * ((std::rand() % 10000) / 5000.0 - 1.0);
+            }
+        }
+
+      // ... and interpolate it onto the grid of the computation.
+      interpolate_noise = new Functions::InterpolatedUniformGridData<dim> (grid_extents,
+                                                                           grid_intervals,
+                                                                           white_noise);
     }
 
 
@@ -583,7 +678,7 @@ namespace aspect
     double
     MeltBandsInitialCondition<dim>::get_wave_amplitude () const
     {
-      return amplitude;
+      return wave_amplitude;
     }
 
 
@@ -608,8 +703,21 @@ namespace aspect
     MeltBandsInitialCondition<dim>::
     initial_composition (const Point<dim> &position, const unsigned int /*n_comp*/) const
     {
-      return background_porosity * (1.0 + amplitude * cos(wave_number*position[0]*sin(initial_band_angle)
-                                                          + wave_number*position[1]*cos(initial_band_angle)));
+      Point<dim> new_position (position);
+      if (dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model()) != NULL)
+        {
+          const GeometryModel::Box<dim> *
+          geometry_model
+            = dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model());
+
+          Point<dim> extents = geometry_model->get_extents();
+          if (position(0) > 0.5 * extents(0))
+            new_position (0) = extents(0) - position(0);
+        }
+
+      return background_porosity * (1.0 + wave_amplitude * cos(wave_number*position[0]*sin(initial_band_angle)
+                                                               + wave_number*position[1]*cos(initial_band_angle)))
+             + interpolate_noise->value(new_position);
     }
 
 
@@ -625,9 +733,13 @@ namespace aspect
                              Patterns::Double (0),
                              "Amplitude of the plane wave added to the initial "
                              "porosity. Units: none.");
+          prm.declare_entry ("Noise amplitude", "1e-4",
+                             Patterns::Double (0),
+                             "Amplitude of the white noise added to the initial "
+                             "porosity. Units: none.");
           prm.declare_entry ("Wave number", "2000",
                              Patterns::Double (0),
-                             "Wave number of the plane wave added to the initial "
+                             "Wave number of the plane wave or white noise added to the initial "
                              "porosity. Is multiplied by 2 pi internally. "
                              "Units: 1/m.");
           prm.declare_entry ("Initial band angle", "30",
@@ -650,7 +762,8 @@ namespace aspect
       {
         prm.enter_subsection("Plane wave melt bands initial condition");
         {
-          amplitude          = prm.get_double ("Wave amplitude");
+          wave_amplitude     = prm.get_double ("Wave amplitude");
+          noise_amplitude    = prm.get_double ("Noise amplitude");
           wave_number        = 2.0 * numbers::PI * prm.get_double ("Wave number");
           initial_band_angle = 2.0 * numbers::PI / 360.0 * prm.get_double ("Initial band angle");
         }
@@ -923,8 +1036,9 @@ namespace aspect
   {
     ASPECT_REGISTER_INITIAL_COMPOSITION_MODEL(MeltBandsInitialCondition,
                                               "melt bands initial condition",
-                                              "Composition is set to background porosity plus "
-                                              "plane wave.")
+                                              "Composition is set to background porosity given "
+                                              "in the material models plus a plane wave and/or "
+                                              "a random perturbation of a given wave number k.")
   }
 }
 
