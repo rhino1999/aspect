@@ -92,7 +92,7 @@ namespace aspect
         double background_porosity;
         double wave_number;
         double initial_band_angle;
-        Functions::InterpolatedUniformGridData<dim> *interpolate_noise;
+        Table<dim,double> white_noise;
     };
   }
 
@@ -468,11 +468,11 @@ namespace aspect
       this->get_pcout() << std::endl;
       this->get_pcout() << "   Scaling parameters: nu = " << nu
                         << ", D = " << D
-						<< ", Q = " << Q
-						<< ", delta = " << compaction_length
-						<< ", lambda = " << 2 * numbers::PI *compaction_length / least_stable_mode
-						<< std::endl
-						<< std::endl;
+                        << ", Q = " << Q
+                        << ", delta = " << compaction_length
+                        << ", lambda = " << 2 * numbers::PI *compaction_length / least_stable_mode
+                        << std::endl
+                        << std::endl;
 
       return;
     }
@@ -631,10 +631,10 @@ namespace aspect
                                  "works with the material model shear bands tension material."));
         }
 
-
       AssertThrow(wave_amplitude < 1.0,
                   ExcMessage("Amplitude of the melt bands must be smaller "
                              "than the background porosity."));
+
 
       // get the model domain size from the geometry model
       std::array<std::pair<double,double>,dim> grid_extents;
@@ -668,14 +668,14 @@ namespace aspect
           size_idx[d] = grid_intervals[d]+1;
         }
 
-      Table<dim,double> white_noise;
       white_noise.TableBase<dim,double>::reinit(size_idx);
 
       // use a fixed number as seed for random generator
       // this is important if we run the code on more than 1 processor
       std::srand(0);
 
-      // compute the random white noise on the resolution given in the input file...
+      // compute the random white noise on the resolution given in the input file,
+      // it will be interpolated onto the grid later on
       TableIndices<dim> idx;
 
       for (unsigned int i=0; i<white_noise.size()[0]; ++i)
@@ -687,11 +687,6 @@ namespace aspect
               white_noise(idx) = background_porosity * noise_amplitude * ((std::rand() % 10000) / 5000.0 - 1.0);
             }
         }
-
-      // ... and interpolate it onto the grid of the computation.
-      interpolate_noise = new Functions::InterpolatedUniformGridData<dim> (grid_extents,
-                                                                           grid_intervals,
-                                                                           white_noise);
     }
 
 
@@ -724,7 +719,7 @@ namespace aspect
     MeltBandsInitialCondition<dim>::
     initial_composition (const Point<dim> &position, const unsigned int /*n_comp*/) const
     {
-      Point<dim> new_position (position);
+      double noise = 0.0;
       if (dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model()) != NULL)
         {
           const GeometryModel::Box<dim> *
@@ -732,13 +727,27 @@ namespace aspect
             = dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model());
 
           Point<dim> extents = geometry_model->get_extents();
-          if (position(0) > 0.5 * extents(0))
-            new_position (0) = extents(0) - position(0);
+          const double x = position[0];
+          const double y = position[1];
+          TableIndices<dim> idx;
+
+          // Use a Gaussian to interpolate the white noise onto the grid
+          for (unsigned int i=0; i<white_noise.size()[0]; ++i)
+            {
+              idx[0] = (i < white_noise.size()[0]/2 ? i : white_noise.size()[0]-1-i);
+              const double x0 = double(i)/double(white_noise.size()[0]-1) * extents(0);
+              for (unsigned int j=0; j<white_noise.size()[1]; ++j)
+                {
+                  idx[1] = j;
+                  const double y0 = double(j)/double(white_noise.size()[1]-1) * extents(1);
+                  noise += white_noise(idx) * exp(-(pow(x-x0,2) + pow(y-y0,2)) * pow(wave_number,2)*2.0);
+                }
+            }
         }
 
       return background_porosity * (1.0 + wave_amplitude * cos(wave_number*position[0]*sin(initial_band_angle)
                                                                + wave_number*position[1]*cos(initial_band_angle)))
-             + interpolate_noise->value(new_position);
+             + noise;
     }
 
 
@@ -751,7 +760,7 @@ namespace aspect
         prm.enter_subsection("Plane wave melt bands initial condition");
         {
           prm.declare_entry ("Wave amplitude", "1e-4",
-                             Patterns::Double (0),
+                             Patterns::Double (0,1),
                              "Amplitude of the plane wave added to the initial "
                              "porosity. Units: none.");
           prm.declare_entry ("Noise amplitude", "1e-4",
@@ -896,7 +905,7 @@ namespace aspect
                 {
                   data.local_rhs(i) += (tension->surface_tensions[q] * (1.0 - porosity)
                                         *
-                                        // term that describes the effective pressure gradient due                      to
+                                        // term that describes the effective pressure gradient due to
                                         // variations in microscopic interface curvature
                                         ((- tension->interface_curvatures[q] * scratch.div_phi_u[i])
                                          +
