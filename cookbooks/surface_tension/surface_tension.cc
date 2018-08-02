@@ -246,7 +246,7 @@ namespace aspect
 
         virtual double reference_viscosity () const
         {
-          return eta_0;
+          return eta_0*1.e-3;
         }
 
         virtual double reference_darcy_coefficient () const
@@ -829,7 +829,12 @@ namespace aspect
     }
 
     /**
-     * Surface tension assembler.
+     * Surface tension assembler. It assembles new terms on the right-hand side
+     * of the momentum equation that describe pressure gradients due to
+     * (1) variations in microscopic interface curvature and
+     * (2) variations in the surface tension on effective macroscopic (diffuse)
+     * interfaces associated with large curvatures, as outlined in Bercovici
+     * et al. (2016).
      */
     template <int dim>
     class SurfaceTensionAssembler :
@@ -938,6 +943,10 @@ namespace aspect
 
     /**
      * Surface tension face assembler.
+     * This assembler adds the boundary terms corresponding to the terms
+     * assembled by the SurfaceTensionAssembler (see above), which arise
+     * when the equations are brought into the weak form due to integration
+     * by parts.
      */
     template <int dim>
     class SurfaceTensionFaceAssembler :
