@@ -247,6 +247,14 @@ namespace aspect
   }
 
   template <int dim>
+  unsigned int
+  SimulatorAccess<dim>::get_max_refinement_level () const
+  {
+    return simulator->parameters.initial_global_refinement +
+           simulator->parameters.initial_adaptive_refinement;
+  }
+
+  template <int dim>
   void
   SimulatorAccess<dim>::get_refinement_criteria (Vector<float> &estimated_error_per_cell) const
   {

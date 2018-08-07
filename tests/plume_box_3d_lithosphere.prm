@@ -1,0 +1,134 @@
+set Dimension                              = 3
+
+set Use years in output instead of seconds = true
+set End time                               = 0
+
+
+set Adiabatic surface temperature          = 1613.0
+
+subsection Geometry model
+  set Model name = box
+
+  subsection Box
+    set X extent = 3300000
+    set Y extent = 3300000
+    set Z extent = 660000
+    set X repetitions = 5
+    set Y repetitions = 5
+  end
+end
+
+subsection Initial temperature model
+  set Model name = plume
+  subsection Plume
+    set Age top boundary layer = 2e8
+    set Amplitude = 300
+    set Radius    = 250000
+    set Position  = coordinates
+    set Midpoint coordinates = 1707126.5,2029972.6,0
+    set Use lithosphere thickness file = true
+  end
+end
+
+
+subsection Boundary temperature model
+  set List of model names = plume
+end
+
+
+# The parameters below this comment were created by the update script
+# as replacement for the old 'Model settings' subsection. They can be
+# safely merged with any existing subsections with the same name.
+
+subsection Boundary temperature model
+  set Fixed temperature boundary indicators   = 0,1,2,3,4,5
+end
+
+subsection Boundary velocity model
+  set Prescribed velocity boundary indicators = 0:plume box, 1:plume box, 2:plume box, 3:plume box, 4:plume box, 5:plume box
+end
+
+subsection Boundary velocity model
+ # set Tangential velocity boundary indicators = 2,3
+
+end
+
+# Warning: Merge the parameter in the following subsection with any
+# other parameter of the same name, otherwise your model results might change
+subsection Heating model
+  set List of model names = PARAMETER NEEDS MANUAL CHECK:adiabatic heating
+end
+
+# Warning: Merge the parameter in the following subsection with any
+# other parameter of the same name, otherwise your model results might change
+subsection Formulation
+  set List of model names = PARAMETER NEEDS MANUAL CHECK:shear heating
+end
+
+subsection Boundary velocity model
+  subsection Box plates model
+    set Data directory           = $ASPECT_SOURCE_DIR/data/boundary-velocity/box-plates/test/
+    set Id file names            = plates_%d
+    set Velocity file name       = velocities
+    set Scale factor             = 1.0
+  end
+
+  subsection Ascii data model
+    set Data file name       = box_3d_%s.%d.csv
+    set Data directory = $ASPECT_SOURCE_DIR/data/boundary-velocity/plume-box/test/
+    set Data file time step = 1e6
+    set Scale factor = 1.0
+  end
+end
+
+subsection Plume
+    set Radius = 130000
+    set Amplitude = 200.0
+    set Inflow velocity = 1.0
+    set Age top boundary layer = 3e7
+    set Side boundary type = adiabatic
+    set Bottom temperature = 1800
+    set Left temperature   = 0
+    set Right temperature  = 0
+    set Top temperature    = 273
+    subsection Plume refinement
+      set Plume refinement level = 3
+      set Plume refinement radius = 200000
+    end
+end
+
+subsection Gravity model
+  set Model name = vertical
+
+  subsection Vertical
+    set Magnitude = 9.8
+  end
+end
+
+
+subsection Material model
+  set Model name = Steinberger
+  subsection Steinberger model
+    set Use lateral average temperature for viscosity = false
+    set Compressible = true
+  end
+end
+
+
+subsection Mesh refinement
+  set Initial global refinement                = 1
+  set Initial adaptive refinement              = 0
+  set Time steps between mesh refinement       = 0
+  set Strategy                                 = velocity,plume
+end
+
+
+subsection Postprocess
+  set List of postprocessors = velocity statistics, temperature statistics, heat flux statistics
+end
+
+subsection Solver parameters
+  subsection Stokes solver parameters
+    set Linear solver tolerance = 1e-5
+  end
+end

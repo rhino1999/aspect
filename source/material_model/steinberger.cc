@@ -122,6 +122,7 @@ namespace aspect
         Assert(depth<=max_depth, ExcMessage("ASPECT found a depth greater than max_depth."));
         const unsigned int idx = static_cast<unsigned int>((depth-min_depth)/delta_depth);
         Assert(idx<values.size(), ExcMessage("Attempting to look up a depth with an index that would be out of range. (depth-min_depth)/delta_depth too large."));
+
         return values[idx];
       }
     }

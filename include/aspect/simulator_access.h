@@ -271,7 +271,9 @@ namespace aspect
       get_timestep () const;
 
       /**
-       * Return the size of the last time step.
+       * Return the size of the old time step. This is useful in postprocessing,
+       * because this timestep is actually the last one (timestep is already
+       * updated as the next timestep).
        */
       double
       get_old_timestep () const;
@@ -378,6 +380,14 @@ namespace aspect
        */
       unsigned int
       n_compositional_fields () const;
+
+      /**
+       * Return the maximum refinement level of the computation. This is
+       * computed like in the main simulator as the sum of the initial global
+       * refinement and the initial adaptive refinement.
+       */
+      unsigned int
+      get_max_refinement_level () const;
 
       /**
        * Compute the error indicators in the same way they are normally used

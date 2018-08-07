@@ -433,6 +433,8 @@ namespace aspect
         return ccoord;
       }
 
+
+
       template <int dim>
       std::array<double,3>
       cartesian_to_ellipsoidal_coordinates(const Point<3> &x,
@@ -1807,6 +1809,8 @@ namespace aspect
       old_lookups()
     {}
 
+
+
     template <int dim>
     void
     AsciiDataBoundary<dim>::initialize(const std::set<types::boundary_id> &boundary_ids,
@@ -2913,8 +2917,6 @@ namespace aspect
   expand_dimensional_variable_names<dim> (const std::vector<std::string> &var_declarations);
 
     ASPECT_INSTANTIATE(INSTANTIATE)
-
-
 
     template class AsciiDataLookup<1>;
     template class AsciiDataLookup<2>;

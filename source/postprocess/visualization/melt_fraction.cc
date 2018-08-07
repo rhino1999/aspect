@@ -20,6 +20,7 @@
 
 
 #include <aspect/postprocess/visualization/melt_fraction.h>
+#include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/melt.h>
 
 #include <deal.II/base/parameter_handler.h>
@@ -73,8 +74,11 @@ namespace aspect
         else
           for (unsigned int q=0; q<n_quadrature_points; ++q)
             {
-              const double pressure    = input_data.solution_values[q][this->introspection().component_indices.pressure];
+              const double pressure    = this->get_adiabatic_conditions().pressure(input_data.evaluation_points[q]);
               const double temperature = input_data.solution_values[q][this->introspection().component_indices.temperature];
+              const double nonadiabatic_temperature = input_data.solution_values[q][this->introspection().component_indices.temperature]
+                                                      - this->get_adiabatic_conditions().temperature(input_data.evaluation_points[q]);
+
               std::vector<double> composition(this->n_compositional_fields());
 
               for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
@@ -101,7 +105,7 @@ namespace aspect
                 peridotite_melt_fraction = std::pow((temperature - T_solidus) / (T_lherz_liquidus - T_solidus),beta);
 
               // melt fraction after melting of all clinopyroxene
-              const double R_cpx = r1 + r2 * std::max(0.0, pressure);
+              const double R_cpx = r1 + r2 * pressure;
               const double F_max = M_cpx / R_cpx;
 
               if (peridotite_melt_fraction > F_max && temperature < T_liquidus)
@@ -126,14 +130,27 @@ namespace aspect
                 pyroxenite_melt_fraction = -E1/(2*E2) - std::sqrt(discriminant);
 
               double melt_fraction;
-              if (this->introspection().compositional_name_exists("pyroxenite"))
+              double pyroxenite_fraction (0.0);
+
+              if (fixed_pyroxenite_fraction == 0.0)
                 {
-                  const unsigned int pyroxenite_index = this->introspection().compositional_index_for_name("pyroxenite");
-                  melt_fraction = composition[pyroxenite_index] * pyroxenite_melt_fraction +
-                                  (1-composition[pyroxenite_index]) * peridotite_melt_fraction;
+                  if (this->introspection().compositional_name_exists("pyroxenite_fraction"))
+                    pyroxenite_fraction = composition[this->introspection().compositional_index_for_name("pyroxenite_fraction")];
+                  else
+                    pyroxenite_fraction = 0.0;
                 }
               else
-                melt_fraction = peridotite_melt_fraction;
+                {
+                  if (nonadiabatic_temperature > 50)
+                    pyroxenite_fraction = fixed_pyroxenite_fraction;
+                  else
+                    pyroxenite_fraction = 0.0;
+                }
+
+              // if nonadiabatic_temperature > 50
+              // composition_fraction = 10 %
+              melt_fraction =  pyroxenite_fraction * pyroxenite_melt_fraction +
+                               (1-pyroxenite_fraction) * peridotite_melt_fraction;
 
               computed_quantities[q](0) = melt_fraction;
             }
@@ -266,6 +283,11 @@ namespace aspect
                                  "in the quadratic function that approximates "
                                  "the melt fraction of pyroxenite. "
                                  "Units: $°C/(Pa^2)$.");
+              prm.declare_entry ("Fixed pyroxenite fraction", "0.0",
+                                 Patterns::Double (),
+                                 "If this is set to non-zero it will be used "
+                                 "as the fixed pyroxenite fraction to calculate "
+                                 "the overall melt fraction.");
             }
             prm.leave_subsection();
           }
@@ -302,6 +324,7 @@ namespace aspect
               D3              = prm.get_double ("D3");
               E1              = prm.get_double ("E1");
               E2              = prm.get_double ("E2");
+              fixed_pyroxenite_fraction = prm.get_double("Fixed pyroxenite fraction");
             }
             prm.leave_subsection();
           }
