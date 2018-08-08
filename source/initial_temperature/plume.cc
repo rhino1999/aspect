@@ -246,7 +246,7 @@ namespace aspect
     void
     Plume<dim>::declare_parameters (ParameterHandler &prm)
     {
-      prm.enter_subsection("Initial conditions");
+      prm.enter_subsection ("Initial temperature model");
       {
         prm.enter_subsection("Plume");
         {
@@ -301,7 +301,7 @@ namespace aspect
                              "functions follows the syntax understood by the "
                              "muparser library, see Section~\\ref{sec:muparser-format}.");
           prm.declare_entry ("Data directory",
-                             "$ASPECT_SOURCE_DIR/data/initial-conditions/plume/test/",
+                             "$ASPECT_SOURCE_DIR/data/initial-temperature/plume/test/",
                              Patterns::DirectoryName (),
                              "The name of a directory that contains the model data. This path "
                              "may either be absolute (if starting with a '/') or relative to "
@@ -346,7 +346,7 @@ namespace aspect
       const unsigned int n_compositional_fields = prm.get_integer ("Number of fields");
       prm.leave_subsection ();
 
-      prm.enter_subsection("Initial conditions");
+      prm.enter_subsection ("Initial temperature model");
       {
         prm.enter_subsection("Plume");
         {

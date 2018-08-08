@@ -257,8 +257,8 @@ namespace aspect
     template <int dim>
     double
     Plume<dim>::
-    temperature (const unsigned int                   boundary_indicator,
-                 const Point<dim>                    &position) const
+    boundary_temperature (const types::boundary_id boundary_indicator,
+                 const Point<dim>         &position) const
     {
 
       Assert (boundary_indicator<2*dim, ExcMessage ("Unknown boundary indicator."));

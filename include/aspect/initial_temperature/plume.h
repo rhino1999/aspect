@@ -40,7 +40,7 @@ namespace aspect
      * layers calculated using the half-space cooling model. The age/depth of
      * the boundary layers are input parameters or are read from a file.
      *
-     * @ingroup InitialConditionsModels
+     * @ingroup InitialTemperatures
      */
     template <int dim>
     class Plume : public Interface<dim>, public ::aspect::SimulatorAccess<dim>

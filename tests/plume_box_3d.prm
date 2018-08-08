@@ -29,42 +29,18 @@ subsection Initial temperature model
   end
 end
 
-
 subsection Boundary temperature model
+  set Fixed temperature boundary indicators   = left,right,top,bottom,front,back
   set List of model names = plume
 end
 
-
-# The parameters below this comment were created by the update script
-# as replacement for the old 'Model settings' subsection. They can be
-# safely merged with any existing subsections with the same name.
-
-subsection Boundary temperature model
-  set Fixed temperature boundary indicators   = 0,1,2,3,4,5
-end
-
-subsection Boundary velocity model
-  set Prescribed velocity boundary indicators = 0:plume box, 1:plume box, 2:plume box, 3:plume box, 4:plume box, 5:plume box
-end
-
-subsection Boundary velocity model
- # set Tangential velocity boundary indicators = 2,3
-
-end
-
-# Warning: Merge the parameter in the following subsection with any
-# other parameter of the same name, otherwise your model results might change
 subsection Heating model
-  set List of model names = PARAMETER NEEDS MANUAL CHECK:adiabatic heating
-end
-
-# Warning: Merge the parameter in the following subsection with any
-# other parameter of the same name, otherwise your model results might change
-subsection Formulation
-  set List of model names = PARAMETER NEEDS MANUAL CHECK:shear heating
+  set List of model names = adiabatic heating, shear heating
 end
 
 subsection Boundary velocity model
+  set Prescribed velocity boundary indicators = left:plume box, right:plume box, top:plume box, bottom:plume box, front:plume box, back:plume box
+
   subsection Box plates model
     set Data directory           = $ASPECT_SOURCE_DIR/data/boundary-velocity/box-plates/test/
     set Id file names            = plates_%d
@@ -109,7 +85,6 @@ subsection Material model
   set Model name = Steinberger
   subsection Steinberger model
     set Use lateral average temperature for viscosity = false
-    set Compressible = true
   end
 end
 

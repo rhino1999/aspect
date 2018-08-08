@@ -135,8 +135,8 @@ namespace aspect
          * temperature.
          */
         virtual
-        double temperature (const unsigned int                   boundary_indicator,
-                            const Point<dim>                    &position) const;
+        double boundary_temperature (const types::boundary_id boundary_indicator,
+                                     const Point<dim>        &position) const;
 
         /**
          * Return the minimal the temperature on that part of the boundary on
