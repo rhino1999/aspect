@@ -326,7 +326,8 @@ namespace aspect
               {
                 const double porosity = std::max(in.composition[i][porosity_idx],0.0);
 
-                melt_out->compaction_viscosities[i] = std::pow(1.-porosity,2) * 5./3. * out.viscosities[i];
+                melt_out->compaction_viscosities[i] = std::pow(1.-porosity,2) * bulk_to_shear_ratio * out.viscosities[i]
+													  * pow(std::max(porosity, 1.e-10) / background_porosity, bulk_viscosity_exponent);
                 melt_out->fluid_viscosities[i]= eta_f;
                 melt_out->permeabilities[i]= reference_permeability * std::pow(porosity,permeability_exponent) * std::pow(grainsize,2);
                 melt_out->fluid_densities[i]= reference_rho_f;
@@ -377,7 +378,7 @@ namespace aspect
 
                       // set up all the constants we need to compute the growth rate
                       const double c_0 = eta_f / (reference_permeability * std::pow(grainsize,2)) * std::pow(porosity,2.-permeability_exponent);
-                      const double B_0 = std::pow(1.-background_porosity,2) * 5./3. * eta_0;
+                      const double B_0 = std::pow(1.-background_porosity,2) * bulk_to_shear_ratio * eta_0;
                       const double compaction_length = sqrt(std::pow(background_porosity,2) * (B_0 + 4./3. * eta_0) / c_0);
 
                       const double wave_number = melt_bands.get_wave_number()*compaction_length;
@@ -424,6 +425,9 @@ namespace aspect
         bool compute_growth_rate;
         bool use_coble_creep;
 
+        double bulk_to_shear_ratio;
+        double bulk_viscosity_exponent;
+
         // Parameters needed to compute the growth rate and the least stable mode.
         // These parameters correspond to the ones with the same name in Bercovici and Rudge (2016)
         // (for full reference, see class documentation).
@@ -448,7 +452,7 @@ namespace aspect
     {
       // set up all the constants we need to compute the growth rate
       const double c_0 = eta_f / (reference_permeability * std::pow(grainsize,2)) * std::pow(background_porosity,2.-permeability_exponent);
-      const double B_0 = std::pow(1.-background_porosity,2) * 5./3. * eta_0;
+      const double B_0 = std::pow(1.-background_porosity,2) * bulk_to_shear_ratio * eta_0;
       const double compaction_length = sqrt(std::pow(background_porosity,2) * (B_0 + 4./3. * eta_0) / c_0);
 
       const double area_prefactor = geometry_factor * surface_tension / grainsize;
@@ -541,6 +545,14 @@ namespace aspect
                              Patterns::Double(0),
                              "The surface tension . "
                              "Units: Pa m.");
+          prm.declare_entry ("Bulk to shear viscosity ratio", "1.666666667",
+                             Patterns::Double(0),
+                             "The bulk-to-shear viscosity ratio at the background porosity. "
+                             "Units: none.");
+          prm.declare_entry ("Bulk viscosity exponent", "-1.0",
+                             Patterns::Double(),
+                             "The porosity dependence of the bulk viscosity. "
+                             "Units: none.");
           prm.declare_entry ("Compute growth rate", "false",
                              Patterns::Bool (),
                              "Whether to compute the shear bands growth rates. "
@@ -581,6 +593,8 @@ namespace aspect
           geometry_factor            = prm.get_double ("Geometry factor");
           porosity_area_factor       = prm.get_double ("Porosity area factor");
           surface_tension            = prm.get_double ("Surface tension");
+          bulk_to_shear_ratio        = prm.get_double ("Bulk to shear viscosity ratio");
+          bulk_viscosity_exponent    = prm.get_double ("Bulk viscosity exponent");
           compute_growth_rate        = prm.get_bool ("Compute growth rate");
           use_coble_creep            = prm.get_bool ("Use Coble creep");
         }
