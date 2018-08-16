@@ -21,13 +21,13 @@ set Additional shared libraries            = ./libsurface_tension.so, ../../benc
 set Adiabatic surface temperature          = 1623
 set CFL number                             = 1.0
 set Nonlinear solver scheme                = iterated Advection and Stokes
-set Output directory                       = surface_tension_R1.7_q1
+set Output directory                       = anorthite_R1.7_q1
 set Max nonlinear iterations               = 100
 set Nonlinear solver tolerance             = 1e-5
 
 set Dimension                              = 2
 
-set End time                               = 180
+set End time                               = 1000
 
 set Pressure normalization                 = surface
 set Surface pressure                       = 0
@@ -77,7 +77,7 @@ end
 subsection Boundary velocity model
   set Prescribed velocity boundary indicators = 2:function, 3:function
   subsection Function
-    set Function constants = u0=2.25e-6,ymid=3.75e-4
+    set Function constants = u0=2.25e-7,ymid=3.75e-4
     set Function expression = u0*(y/ymid-1.0);0
   end
 end
@@ -117,9 +117,10 @@ subsection Initial composition model
   set Model name = melt bands initial condition
 
   subsection Plane wave melt bands initial condition
-    set Noise amplitude = 5e-3
+    set Noise amplitude = 5e-2
+    set Wave amplitude =  0
     set Initial band angle = 45
-    set Wave number = 5e3 #7e3
+    set Wave number = 4e3
   end
 end
 
@@ -132,13 +133,13 @@ subsection Material model
     set Background porosity = 0.03      #phi_0
 
     # TODO: get that from the boundary conditions!
-    set Reference strain rate = 3e-3    # epsilon_0
-    set Grain size = 4e-6                  # d
+    set Reference strain rate = 3e-4       # epsilon_0
+    set Grain size = 2e-6                  # d
     set Geometry factor = 3.34
     set Porosity area factor = -0.35
-    set Reference permeability = 6.25e-4   # 1/1600
-    set Reference melt viscosity = 3.3e5
-    set Reference shear viscosity = 5e12   # mu_0
+    set Reference permeability = 0.002777778
+    set Reference melt viscosity = 10
+    set Reference shear viscosity = 6e11   # mu_0
     set Strain rate exponent = 1           # n
     set Surface tension = 1                # gamma
     set Use Coble creep = false
@@ -185,7 +186,7 @@ subsection Postprocess
     end
 
     set Output format                 = vtu
-    set Time between graphical output = 5
+    set Time between graphical output = 25
   end
 
 end

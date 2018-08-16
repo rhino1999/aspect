@@ -686,7 +686,7 @@ namespace aspect
 
       // use a fixed number as seed for random generator
       // this is important if we run the code on more than 1 processor
-      std::srand(0);
+      std::srand(14);
 
       // compute the random white noise on the resolution given in the input file,
       // it will be interpolated onto the grid later on
