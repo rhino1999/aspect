@@ -62,10 +62,38 @@ namespace aspect
          * model to update internal data structures.
          */
         virtual void update();
+
         /**
          * @name Physical parameters used in the basic equations
          * @{
          */
+
+        /**
+         * This function calculates the dislocation viscosity. For this purpose
+         * we need the dislocation component of the strain rate, which we can
+         * only compute by knowing the dislocation viscosity. Therefore, we
+         * iteratively solve for the dislocation viscosity and update the
+         * dislocation strain rate in each iteration using the new value
+         * obtained for the dislocation viscosity. The iteration is started
+         * with a dislocation viscosity calculated for the whole strain rate.
+         */
+        double dislocation_viscosity (const double      temperature,
+                                      const double      pressure,
+                                      const std::vector<double>    &compositional_fields,
+                                      const SymmetricTensor<2,dim> &strain_rate,
+                                      const Point<dim> &position,
+                                      const double diff_viscosity) const;
+
+        /**
+         * This function calculates the dislocation viscosity for a given
+         * dislocation strain rate.
+         */
+        double dislocation_viscosity_fixed_strain_rate (const double      temperature,
+                                                        const double      pressure,
+                                                        const std::vector<double> &,
+                                                        const SymmetricTensor<2,dim> &dislocation_strain_rate,
+                                                        const Point<dim> &position) const;
+
         virtual double viscosity (const double                  temperature,
                                   const double                  pressure,
                                   const std::vector<double>    &compositional_fields,
@@ -224,6 +252,7 @@ namespace aspect
         bool use_lateral_average_temperature;
         bool use_dehydration_rheology;
         bool use_depletion_influence_on_density;
+        bool use_composite_rheology;
         double reference_eta;
         std::vector<double> avg_temp;
         double min_eta;
@@ -239,6 +268,16 @@ namespace aspect
          * The thermal conductivity.
          */
         double k_value;
+
+        /**
+         * Parameters controlling the dislocation viscosity.
+         */
+        double dislocation_viscosity_iteration_threshold;
+        unsigned int dislocation_viscosity_iteration_number;
+        double dislocation_creep_exponent;
+        double dislocation_activation_energy;
+        double dislocation_activation_volume;
+        double dislocation_creep_prefactor;
 
         /**
          * Parameters for anhydrous melting of peridotite after Katz, 2003

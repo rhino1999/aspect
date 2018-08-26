@@ -64,16 +64,99 @@ namespace aspect
 
     template <int dim>
     double
+	Plume<dim>::
+    dislocation_viscosity (const double      temperature,
+                           const double      pressure,
+                           const std::vector<double> &/*composition*/,
+                           const SymmetricTensor<2,dim> &strain_rate,
+                           const Point<dim> &position,
+                           const double diff_viscosity) const
+    {
+      // Start the iteration with the full strain rate
+      double dis_viscosity = dislocation_viscosity_fixed_strain_rate(temperature,pressure,std::vector<double>(),strain_rate,position);
+
+      double dis_viscosity_old = 0;
+      unsigned int i = 0;
+      while ((std::abs((dis_viscosity-dis_viscosity_old) / dis_viscosity) > dislocation_viscosity_iteration_threshold)
+             && (i < dislocation_viscosity_iteration_number))
+        {
+          const SymmetricTensor<2,dim> dislocation_strain_rate = diff_viscosity
+                                                                 / (diff_viscosity + dis_viscosity) * strain_rate;
+          dis_viscosity_old = dis_viscosity;
+          dis_viscosity = dislocation_viscosity_fixed_strain_rate(temperature,
+                                                                  pressure,
+                                                                  std::vector<double>(),
+                                                                  dislocation_strain_rate,
+                                                                  position);
+          ++i;
+        }
+
+      Assert(i<dislocation_viscosity_iteration_number,ExcInternalError());
+
+      return dis_viscosity;
+    }
+
+
+
+    template <int dim>
+    double
+	Plume<dim>::
+    dislocation_viscosity_fixed_strain_rate (const double      temperature,
+                                             const double      pressure,
+                                             const std::vector<double> &,
+                                             const SymmetricTensor<2,dim> &dislocation_strain_rate,
+                                             const Point<dim> &position) const
+    {
+      const SymmetricTensor<2,dim> shear_strain_rate = dislocation_strain_rate - 1./dim * trace(dislocation_strain_rate) * unit_symmetric_tensor<dim>();
+      const double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
+
+      // Currently this will never be called without adiabatic_conditions initialized, but just in case
+      const double adiabatic_pressure = this->get_adiabatic_conditions().is_initialized()
+                                        ?
+                                        this->get_adiabatic_conditions().pressure(position)
+                                        :
+                                        pressure;
+
+      double energy_term = exp((dislocation_activation_energy + dislocation_activation_volume * adiabatic_pressure)
+                               / (dislocation_creep_exponent * constants::gas_constant * temperature));
+
+      // If we are past the initialization of the adiabatic profile, use it to
+      // limit viscosity variations due to temperature.
+      if (this->get_adiabatic_conditions().is_initialized())
+        {
+          const double adiabatic_energy_term
+            = exp((dislocation_activation_energy + dislocation_activation_volume * adiabatic_pressure)
+                  / (dislocation_creep_exponent * constants::gas_constant * this->get_adiabatic_conditions().temperature(position)));
+
+          const double temperature_dependence = energy_term / adiabatic_energy_term;
+          if (temperature_dependence > max_lateral_eta_variation)
+            energy_term = adiabatic_energy_term * max_lateral_eta_variation;
+          if (temperature_dependence < 1.0 / max_lateral_eta_variation)
+            energy_term = adiabatic_energy_term / max_lateral_eta_variation;
+        }
+
+      const double strain_rate_dependence = (1.0 - dislocation_creep_exponent) / dislocation_creep_exponent;
+
+      return std::pow(dislocation_creep_prefactor, -1.0/dislocation_creep_exponent)
+             * std::pow(second_strain_rate_invariant, strain_rate_dependence)
+             * energy_term;
+    }
+
+
+
+    template <int dim>
+    double
     Plume<dim>::
     viscosity (const double temperature,
                const double pressure,
-               const std::vector<double> &compositional_fields,
-               const SymmetricTensor<2,dim> &,
+               const std::vector<double> &composition,
+               const SymmetricTensor<2,dim> &strain_rate,
                const Point<dim> &position) const
     {
       const double depth = this->get_geometry_model().depth(position);
       const double adiabatic_temperature = this->get_adiabatic_conditions().temperature(position);
 
+      // First compute the diffusion viscosity
       double delta_temperature;
       if (use_lateral_average_temperature)
         {
@@ -88,20 +171,20 @@ namespace aspect
       // Limit the lateral viscosity variation to a reasonable interval
       const double vis_lateral = std::max(std::min(std::exp(vis_lateral_exp),max_lateral_eta_variation),1/max_lateral_eta_variation);
 
-      const double vis_radial = radial_viscosity_lookup->radial_viscosity(depth);
+      const double diff_viscosity = vis_lateral * radial_viscosity_lookup->radial_viscosity(depth);
 
-//      // Incorporate dehydration rheology after Ito et al. (1999)
-//      // Pre-exponential viscosity factor is 1 below and 50 above the dry solidus of peridotite, respectively
-//      // --> this leads to the desired abrupt viscosity increase, but is physically not as solid as the solution implemented further down!!
-//
-//      // T_solidus for peridotite after Katz, 2003
-//      const double T_solidus = A1 + 273.15 + A2 * pressure + A3 * pressure * pressure;
-//
-//      if (use_dehydration_rheology && temperature >= T_solidus && pressure < 1.3e10)
-//        return std::max(std::min(50 * vis_lateral * vis_radial,max_eta),min_eta);
-//      else
-//        return std::max(std::min(vis_lateral * vis_radial,max_eta),min_eta);
+      const SymmetricTensor<2,dim> shear_strain_rate = strain_rate - 1./dim * trace(strain_rate) * unit_symmetric_tensor<dim>();
+      const double second_strain_rate_invariant = std::sqrt(std::abs(second_invariant(shear_strain_rate)));
 
+      // Then compute the combined diffusion/dislocation viscosity
+      double effective_viscosity;
+      if (use_composite_rheology && std::abs(second_strain_rate_invariant) > 1e-30)
+        {
+          const double disl_viscosity = dislocation_viscosity(temperature, pressure, composition, strain_rate, position, diff_viscosity);
+          effective_viscosity = disl_viscosity * diff_viscosity / (disl_viscosity + diff_viscosity);
+        }
+      else
+        effective_viscosity = diff_viscosity;
 
       // Incorporate dehydration rheology after Howell et al. (2014), see Appendix A.2
       // Pre-exponential term depends on the fractional amount of water dissolved in the solid (Hirth&Kohlstedt, 2003)
@@ -115,12 +198,12 @@ namespace aspect
           const double melt_index = this->introspection().compositional_index_for_name("maximum_melt_fraction");
           // Pre-exponential coefficient C/C0 from equation A4 in Howell et al. (2014)
           //  equals X_H2O/X_bulk_H2O in equation 18 from Katz et al. (2003), leading to:
-          const double dehydration_prefactor = D_H2O + compositional_fields[melt_index] * (1 - D_H2O);
+          const double dehydration_prefactor = D_H2O + composition[melt_index] * (1 - D_H2O);
           // if the depletion is 0, the prefactor is 0.01 and reduces the viscosity everywhere, therefore the final viscosity is divided by D_H2O
-          return std::max(std::min(dehydration_prefactor / D_H2O * vis_lateral * vis_radial,max_eta),min_eta);
+          return std::max(std::min(dehydration_prefactor / D_H2O * effective_viscosity,max_eta),min_eta);
         }
       else
-        return std::max(std::min(vis_lateral * vis_radial,max_eta),min_eta);
+        return std::max(std::min(effective_viscosity,max_eta),min_eta);
     }
 
 
@@ -129,7 +212,7 @@ namespace aspect
     double
     Plume<dim>::
     get_corrected_temperature (const double temperature,
-                               const double pressure,
+                               const double /*pressure*/,
                                const Point<dim> &position) const
     {
       if (!(this->get_adiabatic_conditions().is_initialized())
@@ -147,7 +230,7 @@ namespace aspect
     template <int dim>
     double
     Plume<dim>::
-    get_corrected_pressure (const double temperature,
+    get_corrected_pressure (const double /*temperature*/,
                             const double pressure,
                             const Point<dim> &position) const
     {
@@ -225,7 +308,7 @@ namespace aspect
     specific_heat (const double temperature,
                    const double pressure,
                    const std::vector<double> &compositional_fields,
-                   const Point<dim> &position) const
+                   const Point<dim> &/*position*/) const
     {
       double cp = 0.0;
       if (!latent_heat)
@@ -273,7 +356,7 @@ namespace aspect
     get_compressible_density (const double temperature,
                               const double pressure,
                               const std::vector<double> &compositional_fields,
-                              const Point<dim> &position) const
+                              const Point<dim> &/*position*/) const
     {
       double rho = 0.0;
       if (n_material_data == 1)
@@ -678,8 +761,8 @@ namespace aspect
     Plume<dim>::
     peridotite_melt_fraction (const double temperature,
                               const double pressure,
-                              const std::vector<double> &composition, /*composition*/
-                              const Point<dim> &position) const
+                              const std::vector<double> &/*composition*/,
+                              const Point<dim> &/*position*/) const
     {
       // anhydrous melting of peridotite after Katz, 2003
       const double T_solidus  = A1 + 273.15
@@ -719,8 +802,8 @@ namespace aspect
     Plume<dim>::
     pyroxenite_melt_fraction (const double temperature,
                               const double pressure,
-                              const std::vector<double> &composition, /*composition*/
-                              const Point<dim> &position) const
+                              const std::vector<double> &/*composition*/,
+                              const Point<dim> &/*position*/) const
     {
       // melting of pyroxenite after Sobolev et al., 2011
       const double T_melting = D1 + 273.15
@@ -877,6 +960,11 @@ namespace aspect
                              Patterns::Bool (),
                              "Whether to include a compressible material description."
                              "For a description see the manual section. ");
+          prm.declare_entry ("Use composite rheology", "false",
+                             Patterns::Bool (),
+                             "Whether to include a composite rheology of diffusion and "
+                             "dislocation creep (if true) or to use only diffusion creep "
+                             "(if false).");
           prm.declare_entry ("Reference viscosity", "1e23",
                              Patterns::Double(0),
                              "The reference viscosity that is used for pressure scaling. ");
@@ -893,6 +981,37 @@ namespace aspect
                              "The relative cutoff value for lateral viscosity variations "
                              "caused by temperature deviations. The viscosity may vary "
                              "laterally by this factor squared.");
+          prm.declare_entry ("Dislocation viscosity iteration threshold", "1e-3",
+                             Patterns::Double(0),
+                             "We need to perform an iteration inside the computation "
+                             "of the dislocation viscosity, because it depends on the "
+                             "dislocation strain rate, which depends on the dislocation "
+                             "viscosity itself. This number determines the termination "
+                             "accuracy, i.e. if the dislocation viscosity changes by less "
+                             "than this factor we terminate the iteration.");
+          prm.declare_entry ("Dislocation viscosity iteration number", "100",
+                             Patterns::Integer(0),
+                             "We need to perform an iteration inside the computation "
+                             "of the dislocation viscosity, because it depends on the "
+                             "dislocation strain rate, which depends on the dislocation "
+                             "viscosity itself. This number determines the maximum "
+                             "number of iterations that are performed. ");
+          prm.declare_entry ("Dislocation creep exponent", "3.5",
+                             Patterns::Double(0),
+                             "The power-law exponent $n_{dis}$ for dislocation creep. "
+                             "Units: none.");
+          prm.declare_entry ("Dislocation activation energy", "4.8e5",
+                             Patterns::Double(0),
+                             "The activation energy for dislocation creep $E_{dis}$. "
+                             "Units: $J/mol$.");
+          prm.declare_entry ("Dislocation activation volume", "1.1e-5",
+                             Patterns::Double(0),
+                             "The activation volume for dislocation creep $V_{dis}$. "
+                             "Units: $m^3/mol$.");
+          prm.declare_entry ("Dislocation creep prefactor", "4.5e-15",
+                             Patterns::Double(0),
+                             "The prefactor for the dislocation creep law $A_{dis}$. "
+                             "Units: $Pa^{-n_{dis}}/s$.");
           prm.declare_entry ("Use dehydration rheology", "false",
                              Patterns::Bool (),
                              "Whether to use the dehydration rheology after "
@@ -1086,12 +1205,22 @@ namespace aspect
           interpolation        = prm.get_bool ("Bilinear interpolation");
           latent_heat          = prm.get_bool ("Latent heat");
           compressible         = prm.get_bool ("Compressible");
+          use_composite_rheology = prm.get_bool ("Use composite rheology");
           reference_eta        = prm.get_double ("Reference viscosity");
           k_value              = prm.get_double ("Thermal conductivity");
 
           min_eta              = prm.get_double ("Minimum viscosity");
           max_eta              = prm.get_double ("Maximum viscosity");
           max_lateral_eta_variation    = prm.get_double ("Maximum lateral viscosity variation");
+
+          // dislocation creep parameters
+          dislocation_viscosity_iteration_threshold = prm.get_double("Dislocation viscosity iteration threshold");
+          dislocation_viscosity_iteration_number = prm.get_integer("Dislocation viscosity iteration number");
+          dislocation_creep_exponent            = prm.get_double("Dislocation creep exponent");
+          dislocation_activation_energy         = prm.get_double("Dislocation activation energy");
+          dislocation_activation_volume         = prm.get_double("Dislocation activation volume");
+          dislocation_creep_prefactor           = prm.get_double("Dislocation creep prefactor");
+
 
           A1              = prm.get_double ("A1");
           A2              = prm.get_double ("A2");
