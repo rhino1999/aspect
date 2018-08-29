@@ -296,7 +296,9 @@ namespace aspect
               if (use_coble_creep)
                 out.viscosities[i] = eta_0 * pow(1.-sqrt(background_porosity/0.24),-2.) * pow(1.-sqrt(porosity/0.24),2.);
               else
-                out.viscosities[i] = eta_0 * std::exp(-porosity_exponent*(porosity - background_porosity));
+                out.viscosities[i] = eta_0 * std::exp(-porosity_exponent*(porosity - background_porosity))
+                                     * 0.5 * (1.0 + std::tanh(3.0 * (1.0-porosity/0.1)))
+									 + eta_f;
 
               if (in.strain_rate.size())
                 {
