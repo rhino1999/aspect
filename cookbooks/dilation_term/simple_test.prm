@@ -1,0 +1,164 @@
+# This test makes sure the mass injection term works. 
+# Material is injected in the left half of the domain with a rate that
+# corresponds to a velocity divergence of 1e-14 1/s and can flow
+# out through the right boundary. This corresponds to a linear velocity 
+# increase from 0 to 500 m * 1e-14 1/s = 5e-12 m/s in the right half
+# of the domain. 
+# The latent heat release associated with this is 
+#
+#              latent heat * time step * injection rate
+#              1e10 J/m^3  * 1e10 s    * 1e-14 1/s      = 1e6 J/m^3
+#
+# This leads to a temperature change of 1 K (when devided by the density 
+# and specific heat). 
+# Material is injected with a temperature of 2000 K, which in combination
+# with the injection rate of 1e-14 1/s and the time step of 1e10 s leads
+# to a temperature change of 2 K. 
+# This means the final temperature in the left half of the domain is 3 K. 
+
+set Additional shared libraries            = ./libdilation_term.so
+
+set Dimension                              = 2
+set Adiabatic surface temperature          = 0
+
+set Nonlinear solver scheme                = iterated Advection and Stokes
+set Output directory                       = output_dilation_term
+
+set End time                               = 1e10
+set Use years in output instead of seconds = false
+
+##################### Melting and freezing ########################
+
+# We need to enable the assembler that allows us to add terms
+# to the Stokes equation. 
+subsection Formulation
+  set Enable additional Stokes RHS = true
+end
+
+subsection Solver parameters
+  subsection Stokes solver parameters
+    set Linear solver tolerance                         = 1e-8
+  end
+end
+
+subsection Material model
+  set Model name = dilation term
+
+  subsection Dilation term
+    set Base model = melt simple
+    subsection Injection function
+      set Function expression       = if(x<500,1e-14,0)
+    end
+  end
+ 
+  subsection Melt simple
+    set Thermal conductivity = 1
+    set Reference solid density = 1000
+    set Reference specific heat = 1000
+  end
+end
+
+##################### Model geometry ########################
+
+subsection Geometry model
+  set Model name = box
+
+  subsection Box
+    set X extent      = 1000
+    set Y extent      = 1000
+  end
+end
+
+# The gravity is constant and points downward. 
+subsection Gravity model
+  set Model name = vertical
+  subsection Vertical
+    set Magnitude = 10.0
+  end
+end
+
+##################### Velocity ########################
+
+subsection Boundary velocity model
+  set Tangential velocity boundary indicators = left, top, bottom
+end
+
+# We prescribe the lithostatic pressure as a boundary traction on 
+# the right side of the model, so that material can flow in and out 
+# according to the flow induced by the new term.   
+subsection Boundary traction model
+  set Prescribed traction boundary indicators = right:initial lithostatic pressure
+
+  subsection Initial lithostatic pressure
+    # We calculate the pressure profile at the right model boundary. 
+    set Representative point         = 1000, 1000
+  end
+end
+
+##################### Temperature ########################
+
+# We choose a very small initial termperature perturbation so that a solution
+# can be found in the first step.
+subsection Initial temperature model
+  set Model name = function
+    subsection Function
+      set Function expression       = 1e-4 * sin(x/100) * sin(y/100)
+    end
+end
+
+subsection Boundary temperature model
+  set List of model names = box
+
+  subsection Box
+    set Top temperature = 0
+    set Bottom temperature = 0
+  end
+end
+
+# We want to include latent heat of crystallization of the injected material 
+# in the model. 
+subsection Heating model
+  set List of model names = latent heat injection
+
+  subsection Latent heat injection
+    set Latent heat of crystallization = 1e10
+    set Temperature of injected melt = 2e4
+  end
+end
+
+subsection Melt settings
+  set Include melt transport = false
+  set Heat advection by melt = false
+end
+
+##################### Mesh refinement #########################
+
+subsection Mesh refinement
+  set Initial adaptive refinement              = 0
+  set Initial global refinement                = 5
+  set Time steps between mesh refinement       = 0
+end
+
+##################### Postprocessing ########################
+
+subsection Postprocess
+
+  set List of postprocessors = visualization, composition statistics, velocity statistics
+
+  subsection Visualization
+    set List of output variables      = material properties, melt fraction
+
+    subsection Material properties
+      set List of material properties = density, viscosity
+    end
+
+    set Time between graphical output = 0
+  end
+
+end
+
+# We write a checkpoint every 100 time steps, so that we are able to restart 
+# the computation from that point.
+subsection Checkpointing
+  set Steps between checkpoint = 100
+end
