@@ -733,7 +733,7 @@ namespace aspect
     template <int dim>
     double
     MeltBandsInitialCondition<dim>::
-    initial_composition (const Point<dim> &position, const unsigned int /*n_comp*/) const
+    initial_composition (const Point<dim> &position, const unsigned int n_comp) const
     {
       double noise = 0.0;
       if (dynamic_cast<const GeometryModel::Box<dim> *>(&this->get_geometry_model()) != NULL)
@@ -761,9 +761,12 @@ namespace aspect
             }
         }
 
-      return background_porosity * (1.0 + wave_amplitude * cos(wave_number*position[0]*sin(initial_band_angle)
-                                                               + wave_number*position[1]*cos(initial_band_angle)))
-             + noise;
+      if (n_comp == 0)
+        return background_porosity * (1.0 + wave_amplitude * cos(wave_number*position[0]*sin(initial_band_angle)
+                                                                 + wave_number*position[1]*cos(initial_band_angle)))
+               + noise;
+      else
+    	return 0.0;
     }
 
 
