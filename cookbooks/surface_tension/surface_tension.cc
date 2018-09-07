@@ -296,9 +296,9 @@ namespace aspect
               if (use_coble_creep)
                 out.viscosities[i] = eta_0 * pow(1.-sqrt(background_porosity/0.24),-2.) * pow(1.-sqrt(porosity/0.24),2.);
               else
-                out.viscosities[i] = eta_0 * std::exp(-porosity_exponent*(porosity - background_porosity))
-                                     * 0.5 * (1.0 + std::tanh(3.0 * (1.0-porosity/0.1)))
-									 + eta_f;
+                out.viscosities[i] = pow(1./(eta_0 * std::exp(-porosity_exponent*(porosity - background_porosity)))
+                                     + 1./(10.0 * eta_0 * std::exp(-70.0*(porosity - background_porosity))),-1.0)
+                                     + eta_f;
 
               if (in.strain_rate.size())
                 {
@@ -329,7 +329,7 @@ namespace aspect
                 const double porosity = std::max(in.composition[i][porosity_idx],0.0);
 
                 melt_out->compaction_viscosities[i] = std::pow(1.-porosity,2) * bulk_to_shear_ratio * out.viscosities[i]
-													  * pow(std::max(porosity, 1.e-10) / background_porosity, bulk_viscosity_exponent);
+                                                      * pow(std::max(porosity, 1.e-10) / background_porosity, bulk_viscosity_exponent);
                 melt_out->fluid_viscosities[i]= eta_f;
                 melt_out->permeabilities[i]= reference_permeability * std::pow(porosity,permeability_exponent) * std::pow(grainsize,2);
                 melt_out->fluid_densities[i]= reference_rho_f;
@@ -766,7 +766,7 @@ namespace aspect
                                                                  + wave_number*position[1]*cos(initial_band_angle)))
                + noise;
       else
-    	return 0.0;
+        return 0.0;
     }
 
 

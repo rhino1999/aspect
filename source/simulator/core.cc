@@ -589,6 +589,7 @@ namespace aspect
             << std::endl;
 
     nonlinear_iteration = 0;
+    nonlinear_solver_converged = false;
 
     // then interpolate the current boundary velocities. copy constraints
     // into current_constraints and then add to current_constraints
@@ -1656,45 +1657,58 @@ namespace aspect
               goto start_time_iteration;
           }
 
-        // if we postprocess nonlinear iterations, this function is called within
-        // solve_timestep () in the individual solver schemes
-        if (!parameters.run_postprocessors_on_nonlinear_iterations)
-          postprocess ();
+        // in case the nonlinear solver did not converge, we want to try again with a smaller time step
+        if (nonlinear_solver_converged)
+          {
+            // if we postprocess nonlinear iterations, this function is called within
+            // solve_timestep () in the individual solver schemes
+            if (!parameters.run_postprocessors_on_nonlinear_iterations)
+              postprocess ();
 
-        // get new time step size
-        const double new_time_step = compute_time_step();
+            // get new time step size
+            const double new_time_step = compute_time_step();
 
-        // see if we want to refine the mesh
-        maybe_refine_mesh(new_time_step,max_refinement_level);
+            // see if we want to refine the mesh
+            maybe_refine_mesh(new_time_step,max_refinement_level);
 
-        // see if we want to write a timing summary
-        maybe_write_timing_output();
+            // see if we want to write a timing summary
+            maybe_write_timing_output();
 
-        // update values for timestep, increment time step by one. then prepare
-        // for the next time step by shifting solution vectors
-        // by one time step
-        old_time_step = time_step;
-        time_step = new_time_step;
-        time += time_step;
-        ++timestep_number;
-        {
-          old_old_solution      = old_solution;
-          old_solution          = solution;
-        }
+            // update values for timestep, increment time step by one. then prepare
+            // for the next time step by shifting solution vectors
+            // by one time step
+            old_time_step = time_step;
+            time_step = new_time_step;
+            time += time_step;
+            ++timestep_number;
+            {
+              old_old_solution      = old_solution;
+              old_solution          = solution;
+            }
 
-        // check whether to terminate the simulation. the
-        // first part of the pair indicates whether to terminate
-        // the execution; the second indicates whether to do one
-        // more checkpoint
-        const std::pair<bool,bool> termination = termination_manager.execute();
+            // check whether to terminate the simulation. the
+            // first part of the pair indicates whether to terminate
+            // the execution; the second indicates whether to do one
+            // more checkpoint
+            const std::pair<bool,bool> termination = termination_manager.execute();
 
-        const bool checkpoint_written = maybe_write_checkpoint(last_checkpoint_time,termination);
-        if (checkpoint_written)
-          last_checkpoint_time = std::time(NULL);
+            const bool checkpoint_written = maybe_write_checkpoint(last_checkpoint_time,termination);
+            if (checkpoint_written)
+              last_checkpoint_time = std::time(NULL);
 
-        // see if we want to terminate
-        if (termination.first)
-          break;
+            // see if we want to terminate
+            if (termination.first)
+              break;
+          }
+        else
+          {
+            // get new time step size
+            const double new_time_step = 0.5*time_step;
+
+            // update values for timestep
+            time -= time_step - new_time_step;
+            time_step = new_time_step;
+          }
       }
     while (true);
 

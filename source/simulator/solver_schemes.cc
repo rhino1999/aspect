@@ -414,7 +414,10 @@ namespace aspect
           postprocess ();
 
         if (max < parameters.nonlinear_tolerance)
-          break;
+          {
+            nonlinear_solver_converged = true;
+            break;
+          }
 
         ++nonlinear_iteration;
       }
