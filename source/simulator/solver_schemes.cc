@@ -419,6 +419,10 @@ namespace aspect
             break;
           }
 
+        // if the nonlinear residual becomes too large, we want to reduce the time step
+        if (max > 0.01)
+          break;
+
         ++nonlinear_iteration;
       }
     while (nonlinear_iteration < max_nonlinear_iterations);
