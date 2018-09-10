@@ -363,7 +363,7 @@ namespace aspect
                   const double porosity = std::max(in.composition[i][porosity_idx],0.0);
                   const double cutoff_porosity = std::max(in.composition[i][porosity_idx],1.e-7);
 
-                  const double area_prefactor = geometry_factor * surface_tension / grainsize;
+                  const double area_prefactor = geometry_factor / grainsize;
                   tension_out->interface_areas[i] = area_prefactor * (1 + porosity_area_factor * std::pow(porosity,0.5));
                   tension_out->interface_curvatures[i] = 0.5 * area_prefactor * porosity_area_factor * std::pow(cutoff_porosity,-0.5);
                   tension_out->interface_curvature_variations[i] = -0.25 * area_prefactor * porosity_area_factor * std::pow(cutoff_porosity,-1.5);
@@ -457,7 +457,7 @@ namespace aspect
       const double B_0 = std::pow(1.-background_porosity,2) * bulk_to_shear_ratio * eta_0;
       const double compaction_length = sqrt(std::pow(background_porosity,2) * (B_0 + 4./3. * eta_0) / c_0);
 
-      const double area_prefactor = geometry_factor * surface_tension / grainsize;
+      const double area_prefactor = geometry_factor / grainsize;
       const double interface_curvature_variation = -0.25 * area_prefactor * porosity_area_factor * std::pow(background_porosity,-1.5);
       const double interface_area = area_prefactor * (1 + porosity_area_factor * std::pow(background_porosity,0.5));
 
