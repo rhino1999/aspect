@@ -1666,7 +1666,7 @@ namespace aspect
               postprocess ();
 
             // get new time step size
-            const double new_time_step = std::min(compute_time_step(), time_step*1.1);
+            const double new_time_step = std::min(compute_time_step(), time_step*1.03);
 
             // see if we want to refine the mesh
             maybe_refine_mesh(new_time_step,max_refinement_level);
