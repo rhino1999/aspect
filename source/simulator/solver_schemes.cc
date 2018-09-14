@@ -420,7 +420,7 @@ namespace aspect
           }
 
         // if the nonlinear residual becomes too large, we want to reduce the time step
-        if (max > 0.01)
+        if (max > 0.01 && timestep_number > 0)
           break;
 
         ++nonlinear_iteration;
