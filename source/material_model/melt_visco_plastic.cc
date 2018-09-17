@@ -26,26 +26,17 @@
 #include <deal.II/base/parameter_handler.h>
 #include <deal.II/numerics/fe_field_function.h>
 
-using namespace dealii;
-
 namespace aspect
 {
   namespace MaterialModel
   {
-    template <int dim>
-    void
-    MeltViscoPlastic<dim>::initialize ()
-    {
-      base_model->initialize();
-    }
-
 
     template <int dim>
     double
     MeltViscoPlastic<dim>::
     reference_viscosity () const
     {
-      return base_model->reference_viscosity();
+      return ref_viscosity;
     }
 
     template <int dim>
@@ -62,46 +53,84 @@ namespace aspect
     MeltViscoPlastic<dim>::
     is_compressible () const
     {
-      return base_model->is_compressible();
+      return false;
     }
 
     template <int dim>
-    std::vector<double>
+    ComponentMask
     MeltViscoPlastic<dim>::
-    compute_volume_fractions( const std::vector<double> &compositional_fields) const
-    {
-      std::vector<double> volume_fractions( compositional_fields.size()+1);
-      double sum_composition = 0.0;
+    get_volumetric_composition_mask() const
+    { 
+      ComponentMask composition_mask(this->n_compositional_fields(),true);
 
-      std::vector<double> x_comp = compositional_fields;
-      for (unsigned int i=0; i < x_comp.size(); ++i)
+      composition_mask.set(this->introspection().compositional_index_for_name("plastic_strain"),false);
+      composition_mask.set(this->introspection().compositional_index_for_name("peridotite"),false);
+      composition_mask.set(this->introspection().compositional_index_for_name("porosity"),false);     
+ 
+      if (dim == 2)
         {
-          // The first element represents the background mantle, which is
-          // not included in x_comp
-          if (field_used_in_viscosity_averaging[i+1] == true)
-            {
-              // clip the compositional fields so they are between zero and one
-              // and sum them for normalization purposes
-              x_comp[i] = std::min(std::max(x_comp[i], 0.0), 1.0);
-              sum_composition += x_comp[i];
-            }
-          else
-            x_comp[i] = 0.0;
-        }
-
-      if (sum_composition >= 1.0)
-        {
-          volume_fractions[0] = 0.0;  //background material
-          for ( unsigned int i=1; i <= x_comp.size(); ++i)
-            volume_fractions[i] = x_comp[i-1]/sum_composition;
+          composition_mask.set(this->introspection().compositional_index_for_name("stress_xx"),false);
+          composition_mask.set(this->introspection().compositional_index_for_name("stress_yy"),false);
+          composition_mask.set(this->introspection().compositional_index_for_name("stress_xy"),false);
         }
       else
         {
-          volume_fractions[0] = 1.0 - sum_composition; //background material
-          for ( unsigned int i=1; i <= x_comp.size(); ++i)
-            volume_fractions[i] = x_comp[i-1];
+          composition_mask.set(this->introspection().compositional_index_for_name("stress_xx"),false);
+          composition_mask.set(this->introspection().compositional_index_for_name("stress_yy"),false);
+          composition_mask.set(this->introspection().compositional_index_for_name("stress_zz"),false);
+          composition_mask.set(this->introspection().compositional_index_for_name("stress_xy"),false);
+          composition_mask.set(this->introspection().compositional_index_for_name("stress_xz"),false);
+          composition_mask.set(this->introspection().compositional_index_for_name("stress_yz"),false); 
+        }      
+      return composition_mask;
+    }
+
+    template <int dim>
+    double
+    MeltViscoPlastic<dim>::
+    average_value ( const std::vector<double> &volume_fractions,
+                    const std::vector<double> &parameter_values,
+                    const enum averaging_scheme &average_type) const
+    {
+      double averaged_parameter = 0.0;
+
+      switch (average_type)
+        {
+          case arithmetic:
+          {
+            for (unsigned int i=0; i< volume_fractions.size(); ++i)
+              averaged_parameter += volume_fractions[i]*parameter_values[i];
+            break;
+          }
+          case harmonic:
+          {
+            for (unsigned int i=0; i< volume_fractions.size(); ++i)
+              averaged_parameter += volume_fractions[i]/(parameter_values[i]);
+            averaged_parameter = 1.0/averaged_parameter;
+            break;
+          }
+          case geometric:
+          {
+            for (unsigned int i=0; i < volume_fractions.size(); ++i)
+              averaged_parameter += volume_fractions[i]*std::log(parameter_values[i]);
+            averaged_parameter = std::exp(averaged_parameter);
+            break;
+          }
+          case maximum_composition:
+          {
+            const unsigned int i = (unsigned int)(std::max_element( volume_fractions.begin(),
+                                                                    volume_fractions.end() )
+                                                  - volume_fractions.begin());
+            averaged_parameter = parameter_values[i];
+            break;
+          }
+          default:
+          {
+            AssertThrow( false, ExcNotImplemented() );
+            break;
+          }
         }
-      return volume_fractions;
+      return averaged_parameter;
     }
 
     template <int dim>
@@ -160,25 +189,15 @@ namespace aspect
     MeltViscoPlastic<dim>::
     evaluate(const typename Interface<dim>::MaterialModelInputs &in, typename Interface<dim>::MaterialModelOutputs &out) const
     {
-      // 1) Get the background viscosities
 
-      // get all material properties from the visco-plastic model
-      base_model->evaluate(in, out);
+      // Store which components do not represent volumetric compositions (e.g. strain components).
+      const ComponentMask volumetric_compositions = get_volumetric_composition_mask();
 
-      // Modify viscosity if not using viscosity values from the base model
-      if (use_linear_viscosities == true)
+      // Initial viscosities
+      for (unsigned int i=0; i<in.position.size(); ++i)
         {
-          for (unsigned int i=0; i<in.position.size(); ++i)
-            {
-              // Compute volume fractions
-              const std::vector<double> volume_fractions = compute_volume_fractions(in.composition[i]);
-              double linear_viscosity = 0.;
-              for (unsigned int c=0; c< volume_fractions.size(); ++c)
-                {
-                  linear_viscosity += volume_fractions[c] * linear_viscosities[c];
-                }
-              out.viscosities[i] = linear_viscosity;
-            }
+           const std::vector<double> volume_fractions = compute_volume_fractions(in.composition[i],volumetric_compositions);
+           out.viscosities[i] = average_value(volume_fractions, linear_viscosities, viscosity_averaging);
         }
 
       // Store the intrinsic viscosities for computing the compaction viscosities later on
@@ -249,8 +268,7 @@ namespace aspect
           // 3) Get porosity, melt density and update melt reaction terms
           for (unsigned int i=0; i<in.position.size(); ++i)
             {
-              // we can not use the densities from the visco-plastic model
-              // as they assume compositional fields between 0 and 1, and the depletion field can become negative
+              // Density change to depletion
               const double delta_rho = this->introspection().compositional_name_exists("peridotite")
                                        ?
                                        depletion_density_change * in.composition[i][peridotite_idx]
@@ -321,19 +339,9 @@ namespace aspect
                                        std::max(std::sqrt(std::fabs(second_invariant(deviator(in.strain_rate[i])))),
                                                 min_strain_rate) );
 
-              // compute visco(elastic) stress
+              // compute viscous stress
               const double viscous_stress = 2. * out.viscosities[i] * edot_ii * (1.0 - porosity);
 
-              // overwrite the reaction terms, which is needed to track the finite strain invariant.
-              // TODO clarify what field tracks strain
-              // TODO I removed the condition time_step > 0, because there can be initial strain present, correct?
-              // TODO so far, strain weakening is not implemented anywhere else in this material model (e.g. compute_volume_fractions,
-              // or to actually change the cohesions and friction angles)
-              if (use_strain_weakening && in.strain_rate.size())
-                {
-                  // New strain invariant is old strain invariant plus the strain invariant of the current time step
-                  out.reaction_terms[i][0] = edot_ii*this->get_timestep();
-                }
               // In case porosity lies above the melt transport threshold
               // P_effective = P_bulk - P_f = (1-porosity) * P_s + porosity * P_f - P_f = (1-porosity) * (P_s - P_f)
               // otherwise,
@@ -376,12 +384,19 @@ namespace aspect
                 }
 
               // If the viscous stress is greater than the yield strength, rescale the viscosity back to yield surface
-              // TODO add in shear stress evolution parameter! (or in viscous_stress) (see Keller et al. eq (29) and eq (40))
+              // and reaction term for plastic finite strain
               if (viscous_stress >= yield_strength)
-                out.viscosities[i] = yield_strength / (2.0 * edot_ii);
+                {
+                  out.viscosities[i] = yield_strength / (2.0 * edot_ii);
+
+                  const double edot_ii = std::max(sqrt(std::fabs(second_invariant(deviator(in.strain_rate[i])))),min_strain_rate);
+                  const double e_ii = edot_ii*this->get_timestep();
+
+                  out.reaction_terms[i][this->introspection().compositional_index_for_name("plastic_strain")] = e_ii;
+                }
 
               // Limit the viscosity with specified minimum and maximum bounds
-              out.viscosities[i] = std::min(std::max(out.viscosities[i], min_visc), max_visc);
+              out.viscosities[i] = std::min(std::max(out.viscosities[i], min_viscosity), max_viscosity);
 
               // Compute the volumetric yield strength (Keller et al. eq (38))
               volumetric_yield_strength[i] = viscous_stress - tensile_strength;
@@ -427,7 +442,7 @@ namespace aspect
                 melt_out->compaction_viscosities[i] =  -volumetric_yield_strength[i] / std::max(volumetric_strain_rates[i], min_strain_rate);
 
               // Limit the viscosity with specified minimum and maximum bounds
-              melt_out->compaction_viscosities[i] = std::min(std::max(melt_out->compaction_viscosities[i], min_visc), max_visc);
+              melt_out->compaction_viscosities[i] = std::min(std::max(melt_out->compaction_viscosities[i], min_viscosity), max_viscosity);
             }
         }
 
@@ -443,13 +458,154 @@ namespace aspect
       {
         prm.enter_subsection("Melt visco plastic");
         {
-          prm.declare_entry("Base model","diffusion dislocation",
-                            Patterns::Selection(MaterialModel::get_valid_model_names_pattern<dim>()),
-                            "The name of a material model that will be modified by a visco-plastic  "
-                            "rheology and melt migration outputs. Valid values for this parameter "
-                            "are the names of models that are also valid for the "
-                            "``Material models/Model name'' parameter. See the documentation for "
-                            "that for more information.");
+
+          prm.declare_entry ("Reference temperature", "293", Patterns::Double(0),
+                             "For calculating density by thermal expansivity. Units: $K$");
+          prm.declare_entry ("Densities", "3300.",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of densities for background mantle and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "If only one value is given, then all use the same value.  Units: $kg / m^3$");
+          prm.declare_entry ("Thermal expansivities", "4.e-5",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of thermal expansivities for background mantle and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "If only one value is given, then all use the same value. Units: $1/K$");
+          prm.declare_entry ("Specific heats", "1250.",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of specific heats $C_p$ for background mantle and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "If only one value is given, then all use the same value. Units: $J /kg /K$");
+          prm.declare_entry ("Thermal conductivities", "4.7",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of thermal conductivities for background mantle and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "If only one value is given, then all use the same value. Units: $W/m/K$ ");
+
+          prm.declare_entry ("Minimum strain rate", "1.0e-20", Patterns::Double(0),
+                             "Stabilizes strain dependent viscosity. Units: $1 / s$");
+          prm.declare_entry ("Reference strain rate","1.0e-15",Patterns::Double(0),
+                             "Reference strain rate for first time step. Units: $1 / s$");
+          prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Double(0),
+                             "Lower cutoff for effective viscosity. Units: $Pa \\, s$");
+          prm.declare_entry ("Maximum viscosity", "1e28", Patterns::Double(0),
+                             "Upper cutoff for effective viscosity. Units: $Pa \\, s$");
+
+          prm.declare_entry ("Reference viscosity", "1e22", Patterns::Double(0),
+                             "Reference viscosity for nondimensionalization. "
+                             "To understand how pressure scaling works, take a look at "
+                             "\\cite{KHB12}. In particular, the value of this parameter "
+                             "would not affect the solution computed by \\aspect{} if "
+                             "we could do arithmetic exactly; however, computers do "
+                             "arithmetic in finite precision, and consequently we need to "
+                             "scale quantities in ways so that their magnitudes are "
+                             "roughly the same. As explained in \\cite{KHB12}, we scale "
+                             "the pressure during some computations (never visible by "
+                             "users) by a factor that involves a reference viscosity. This "
+                             "parameter describes this reference viscosity."
+                             "\n\n"
+                             "For problems with a constant viscosity, you will generally want "
+                             "to choose the reference viscosity equal to the actual viscosity. "
+                             "For problems with a variable viscosity, the reference viscosity "
+                             "should be a value that adequately represents the order of "
+                             "magnitude of the viscosities that appear, such as an average "
+                             "value or the value one would use to compute a Rayleigh number."
+                             "\n\n"
+                             "Units: $Pa \\, s$");
+
+          prm.declare_entry ("Viscosity averaging scheme", "harmonic",
+                             Patterns::Selection("arithmetic|harmonic|geometric|maximum composition "),
+                             "When more than one compositional field is present at a point "
+                             "with different viscosities, we need to come up with an average "
+                             "viscosity at that point.  Select a weighted harmonic, arithmetic, "
+                             "geometric, or maximum composition.");
+
+          prm.declare_entry ("Linear viscosities", "1.e22",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of linear viscosities for background material and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "The values can be used instead of the viscosities derived from the "
+                             "base material model. Units: Pa s.");
+
+          prm.declare_entry ("Elastic shear moduli", "75.0e9",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of elastic shear moduli, $G$, "
+                             "for background material and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "The default value of 75 GPa is representative of mantle rocks. Units: Pa.");
+          prm.declare_entry ("Use fixed elastic time step", "unspecified",
+                             Patterns::Selection("true|false|unspecified"),
+                             "Select whether the material time scale in the viscoelastic constitutive "
+                             "relationship uses the regular numerical time step or a separate fixed "
+                             "elastic time step throughout the model run. The fixed elastic time step "
+                             "is always used during the initial time step. If a fixed elastic time "
+                             "step is used throughout the model run, a stress averaging scheme can be "
+                             "applied to account for differences with the numerical time step. An "
+                             "alternative approach is to limit the maximum time step size so that it "
+                             "is equal to the elastic time step. The default value of this parameter is "
+                             "'unspecified', which throws an exception during runtime. In order for "
+                             "the model to run the user must select 'true' or 'false'.");
+          prm.declare_entry ("Fixed elastic time step", "1.e3",
+                             Patterns::Double (0),
+                             "The fixed elastic time step $dte$. Units: years if the "
+                             "'Use years in output instead of seconds' parameter is set; "
+                             "seconds otherwise.");
+          prm.declare_entry ("Use stress averaging","false",
+                             Patterns::Bool (),
+                             "Whether to apply a stress averaging scheme to account for differences "
+                             "between the fixed elastic time step and numerical time step. ");
+
+          prm.declare_entry ("Angles of internal friction", "0",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of angles of internal friction, $\\phi$, for background material and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "For a value of zero, in 2D the von Mises criterion is retrieved. "
+                             "Angles higher than 30 degrees are harder to solve numerically. Units: degrees.");
+          prm.declare_entry ("Cohesions", "1e20",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of cohesions, $C$, for background material and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "The extremely large default cohesion value (1e20 Pa) prevents the viscous stress from "
+                             "exceeding the yield stress. Units: $Pa$.");
+
+          prm.declare_entry ("Maximum yield stress", "1e12", Patterns::Double(0),
+                             "Limits the maximum value of the yield stress determined by the "
+                             "drucker-prager plasticity parameters. Default value is chosen so this "
+                             "is not automatically used. Values of 100e6--1000e6 $Pa$ have been used "
+                             "in previous models. Units: $Pa$");
+
+          prm.declare_entry ("Start plastic strain weakening intervals", "0.",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of strain weakening interval initial strains "
+                             "for background material and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "If only one value is given, then all use the same value.  Units: None");
+          prm.declare_entry ("End plastic strain weakening intervals", "1.",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of strain weakening interval final strains "
+                             "for background material and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "If only one value is given, then all use the same value.  Units: None");
+          prm.declare_entry ("Cohesion plastic strain weakening factors", "1.",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of cohesion plastic strain weakening factors "
+                             "for background material and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "If only one value is given, then all use the same value.  Units: None");
+          prm.declare_entry ("Friction plastic strain weakening factors", "1.",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of friction plastic strain weakening factors "
+                             "for background material and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "If only one value is given, then all use the same value.  Units: None");
+
+          prm.declare_entry ("Host rock strength reductions", "4",
+                             Patterns::List(Patterns::Double(0)),
+                             "List of reduction factors of strength of the host rock under tensile stress, $R$, "
+                             "for background material and compositional fields, "
+                             "for a total of N+1 values, where N is the number of compositional fields. "
+                             "Units: none.");
+
           prm.declare_entry ("Melt density change", "-500",
                              Patterns::Double (),
                              "Difference between solid density $\\rho_{s}$ and melt/fluid$\\rho_{f}$. "
@@ -481,21 +637,6 @@ namespace aspect
                              "field with the name peridotite. Not used if this field does not "
                              "exist in the model."
                              "Units: $kg/m^3$.");
-
-          prm.declare_entry ("Reference strain rate","1.0e-15",Patterns::Double(0),
-                             "Reference strain rate for first time step. Units: $1 / s$");
-
-          prm.declare_entry ("Linear viscosities", "1.e22",
-                             Patterns::List(Patterns::Double(0)),
-                             "List of linear viscosities for background material and compositional fields, "
-                             "for a total of N+1 values, where N is the number of compositional fields. "
-                             "The values can be used instead of the viscosities derived from the "
-                             "base material model. Units: Pa s.");
-          prm.declare_entry ("Use linear viscosities", "false",
-                             Patterns::Bool (),
-                             "Use user-specified linear visocsity values in replace of viscosity "
-                             "values derived from the DiffusionDislocation material model. "
-                             "Units: None");
 
           prm.declare_entry ("A1", "1085.7",
                              Patterns::Double (),
@@ -579,80 +720,6 @@ namespace aspect
                              "peridotite to be molten. "
                              "Units: non-dimensional.");
 
-          // Strain weakening parameters
-          prm.declare_entry ("Use strain weakening", "false",
-                             Patterns::Bool (),
-                             "Apply strain weakening to viscosity, cohesion and internal angle "
-                             "of friction based on accumulated finite strain.  Units: None");
-          prm.declare_entry ("Start strain weakening intervals", "0.",
-                             Patterns::List(Patterns::Double(0)),
-                             "List of strain weakening interval initial strains "
-                             "for background material and compositional fields, "
-                             "for a total of N+1 values, where N is the number of compositional fields. "
-                             "If only one value is given, then all use the same value.  Units: None");
-          prm.declare_entry ("End strain weakening intervals", "1.",
-                             Patterns::List(Patterns::Double(0)),
-                             "List of strain weakening interval final strains "
-                             "for background material and compositional fields, "
-                             "for a total of N+1 values, where N is the number of compositional fields. "
-                             "If only one value is given, then all use the same value.  Units: None");
-          prm.declare_entry ("Cohesion strain weakening factors", "1.",
-                             Patterns::List(Patterns::Double(0)),
-                             "List of cohesion strain weakening factors "
-                             "for background material and compositional fields, "
-                             "for a total of N+1 values, where N is the number of compositional fields. "
-                             "If only one value is given, then all use the same value.  Units: None");
-          prm.declare_entry ("Friction strain weakening factors", "1.",
-                             Patterns::List(Patterns::Double(0)),
-                             "List of friction strain weakening factors "
-                             "for background material and compositional fields, "
-                             "for a total of N+1 values, where N is the number of compositional fields. "
-                             "If only one value is given, then all use the same value.  Units: None");
-
-          // Plasticity parameters
-          prm.declare_entry ("Angles of internal friction", "0",
-                             Patterns::List(Patterns::Double(0)),
-                             "List of angles of internal friction, $\\phi$, for background material and compositional fields, "
-                             "for a total of N+1 values, where N is the number of compositional fields. "
-                             "For a value of zero, in 2D the von Mises criterion is retrieved. "
-                             "Angles higher than 30 degrees are harder to solve numerically. Units: degrees.");
-          prm.declare_entry ("Cohesions", "1e20",
-                             Patterns::List(Patterns::Double(0)),
-                             "List of cohesions, $C$, for background material and compositional fields, "
-                             "for a total of N+1 values, where N is the number of compositional fields. "
-                             "The extremely large default cohesion value (1e20 Pa) prevents the viscous stress from "
-                             "exceeding the yield stress. Units: $Pa$.");
-          prm.declare_entry ("Host rock strength reductions", "4",
-                             Patterns::List(Patterns::Double(0)),
-                             "List of reduction factors of strength of the host rock under tensile stress, $R$, "
-                             "for background material and compositional fields, "
-                             "for a total of N+1 values, where N is the number of compositional fields. "
-                             "Units: none.");
-          prm.declare_entry ("Use compositional field for viscosity averaging", "1",
-                             Patterns::List(Patterns::Integer(0,1)),
-                             "List of integers, detailing for each compositional field if it should be included in the "
-                             "averaging scheme when the yield strength is computed (if 1) or not (if 0).");
-          prm.declare_entry ("Minimum strain rate", "1.0e-20", Patterns::Double(0),
-                             "Stabilizes strain dependent viscosity. Units: $1 / s$");
-          prm.declare_entry ("Minimum viscosity", "1e17", Patterns::Double(0),
-                             "Lower cutoff for effective viscosity. Units: $Pa s$");
-          prm.declare_entry ("Maximum viscosity", "1e28", Patterns::Double(0),
-                             "Upper cutoff for effective viscosity. Units: $Pa s$");
-
-          // Elasticity parameters
-          prm.declare_entry ("Elastic shear moduli", "75.0e9",
-                             Patterns::List(Patterns::Double(0)),
-                             "List of elastic shear moduli, $G$, "
-                             "for background material and compositional fields, "
-                             "for a total of N+1 values, where N is the number of compositional fields. "
-                             "The default value of 75 GPa is representative of mantle rocks. Units: none.");
-          prm.declare_entry ("Elastic time step", "1.e3",
-                             Patterns::Double (0),
-                             "The elastic time step $elastic_time_step$. Units: $yr$.");
-          prm.declare_entry ("Model is viscoelastic", "false",
-                             Patterns::Bool (),
-                             "Viscosity is modified according elastic parameters. Units: None ");
-
         }
         prm.leave_subsection();
       }
@@ -672,28 +739,88 @@ namespace aspect
       {
         prm.enter_subsection("Melt visco plastic");
         {
-          AssertThrow( prm.get("Base model") != "melt visco plastic",
-                       ExcMessage("You may not use ``melt visco plastic'' itself as the base model for "
-                                  "the melt visco plastic model.") );
 
-          // check if the applicable compositional fields exist
-          AssertThrow(this->introspection().compositional_name_exists("peridotite"),
-                      ExcMessage("Material model Melt peridotite eclogite only works if there is a "
-                                 "compositional field called peridotite."));
+          ref_temperature = prm.get_double ("Reference temperature");
+          densities = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Densities"))),
+                                                              n_fields,
+                                                              "Densities");
+          thermal_expansivities = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Thermal expansivities"))),
+                                                                          n_fields,
+                                                                          "Thermal expansivities");
+          specific_heats = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Specific heats"))),
+                                                                   n_fields,
+                                                                   "Specific heats");
+          thermal_conductivities = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Thermal conductivities"))),
+                                                                           n_fields,
+                                                                           "Thermal conductivities");
 
-          if (this->include_melt_transport())
-            {
-              AssertThrow(this->introspection().compositional_name_exists("porosity"),
-                          ExcMessage("Material model Melt peridotite eclogite with melt transport only "
-                                     "works if there is a compositional field called porosity."));
-            }
+          min_strain_rate = prm.get_double("Minimum strain rate");
+          ref_strain_rate = prm.get_double("Reference strain rate");
+          min_viscosity = prm.get_double ("Minimum viscosity");
+          max_viscosity = prm.get_double ("Maximum viscosity");
 
-          // create the base model and initialize its SimulatorAccess base
-          // class; it will get a chance to read its parameters below after we
-          // leave the current section
-          base_model.reset(create_material_model<dim>(prm.get("Base model")));
-          if (SimulatorAccess<dim> *sim = dynamic_cast<SimulatorAccess<dim>*>(base_model.get()))
-            sim->initialize_simulator (this->get_simulator());
+          ref_viscosity = prm.get_double ("Reference viscosity");
+   
+          if (prm.get ("Viscosity averaging scheme") == "harmonic")
+            viscosity_averaging = harmonic;
+          else if (prm.get ("Viscosity averaging scheme") == "arithmetic")
+            viscosity_averaging = arithmetic;
+          else if (prm.get ("Viscosity averaging scheme") == "geometric")
+            viscosity_averaging = geometric;
+          else if (prm.get ("Viscosity averaging scheme") == "maximum composition")
+            viscosity_averaging = maximum_composition;
+          else
+            AssertThrow(false, ExcMessage("Not a valid viscosity averaging scheme"));
+
+          linear_viscosities = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Linear viscosities"))),
+                                                                       n_fields,
+                                                                       "Linear viscosities");
+
+
+          elastic_shear_moduli = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Elastic shear moduli"))),
+                                                                         n_fields,
+                                                                         "Elastic shear moduli");
+
+          if (prm.get ("Use fixed elastic time step") == "true")
+            use_fixed_elastic_time_step = true;
+          else if (prm.get ("Use fixed elastic time step") == "false")
+            use_fixed_elastic_time_step = false;
+          else
+            AssertThrow(false, ExcMessage("'Use fixed elastic time step' must be set to 'true' or 'false'"));
+
+          fixed_elastic_time_step = prm.get_double ("Fixed elastic time step");
+
+          use_stress_averaging = prm.get_bool ("Use stress averaging");
+          if (use_stress_averaging)
+            AssertThrow(use_fixed_elastic_time_step == true,
+                        ExcMessage("Stress averaging can only be used if 'Use fixed elastic time step' is set to true'"));
+
+
+          angles_internal_friction = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Angles of internal friction"))),
+                                                                             n_fields,
+                                                                             "Angles of internal friction");
+          cohesions = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Cohesions"))),
+                                                              n_fields,
+                                                              "Cohesions");
+
+          maximum_yield_stress = prm.get_double("Maximum yield stress");
+
+          start_plastic_strain_weakening_intervals = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Start plastic strain weakening intervals"))),
+                                                                                     n_fields,
+                                                                                     "Start plastic strain weakening intervals");
+          end_plastic_strain_weakening_intervals = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("End strain weakening intervals"))),
+                                                                                   n_fields,
+                                                                                   "End plastic strain weakening intervals");
+          cohesion_plastic_strain_weakening_factors = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Cohesion plastic strain weakening factors"))),
+                                                                                      n_fields,
+                                                                                      "Cohesion plastic strain weakening factors");
+          friction_plastic_strain_weakening_factors = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Friction plastic strain weakening factors"))),
+                                                                                      n_fields,
+                                                                                      "Friction plastic strain weakening factors");
+
+          strength_reductions = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Host rock strength reductions"))),
+                                                                        n_fields,
+                                                                        "Host rock strength reductions");
 
           melt_density_change        = prm.get_double ("Melt density change");
           xi_0                       = prm.get_double ("Reference bulk viscosity");
@@ -702,8 +829,6 @@ namespace aspect
           alpha_phi                  = prm.get_double ("Exponential melt weakening factor");
           freezing_rate              = prm.get_double ("Freezing rate");
           depletion_density_change   = prm.get_double ("Depletion density change");
-
-          ref_strain_rate = prm.get_double("Reference strain rate");
 
           A1              = prm.get_double ("A1");
           A2              = prm.get_double ("A2");
@@ -719,62 +844,61 @@ namespace aspect
           beta            = prm.get_double ("beta");
           M_cpx           = prm.get_double ("Mass fraction cpx");
 
-          // Plasticity parameters
-          angles_internal_friction = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Angles of internal friction"))),
-                                                                             n_fields,
-                                                                             "Angles of internal friction");
-          cohesions = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Cohesions"))),
-                                                              n_fields,
-                                                              "Cohesions");
-          strength_reductions = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Host rock strength reductions"))),
-                                                                        n_fields,
-                                                                        "Host rock strength reductions");
-          field_used_in_viscosity_averaging = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_int(Utilities::split_string_list(prm.get("Use compositional field for viscosity averaging"))),
-                                                                                      n_fields,
-                                                                                      "Use compositional field for viscosity averaging");
-          min_strain_rate = prm.get_double("Minimum strain rate");
-          min_visc = prm.get_double ("Minimum viscosity");
-          max_visc = prm.get_double ("Maximum viscosity");
 
-          use_linear_viscosities = prm.get_bool ("Use linear viscosities");
-          linear_viscosities = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Linear viscosities"))),
-                                                                       n_fields,
-                                                                       "Linear viscosities");
+          if (dim == 2)
+            {
+              AssertThrow(this->introspection().compositional_name_exists("stress_xx"),
+                          ExcMessage("Material model Melt visco plastic only works if there is a "
+                                     "compositional field called stress_xx."));
+              AssertThrow(this->introspection().compositional_name_exists("stress_yy"),
+                          ExcMessage("Material model Material model Melt visco plastic only works if there is a "
+                                     "compositional field called stress_yy."));
+              AssertThrow(this->introspection().compositional_name_exists("stress_xy"),
+                          ExcMessage("Material model Melt visco plastic only works if there is a "
+                                     "compositional field called stress_xy."));
+            }
+          else
+            {
+              AssertThrow(this->introspection().compositional_name_exists("stress_xx"),
+                          ExcMessage("Material model Melt visco plastic only works if there is a "
+                                     "compositional field called stress_xx."));
+              AssertThrow(this->introspection().compositional_name_exists("stress_yy"),
+                          ExcMessage("Material model Melt visco plastic only works if there is a "
+                                     "compositional field called stress_yy."));
+              AssertThrow(this->introspection().compositional_name_exists("stress_zz"),
+                          ExcMessage("Material model Melt visco plastic only works if there is a "
+                                     "compositional field called stress_zz."));
+              AssertThrow(this->introspection().compositional_name_exists("stress_xy"),
+                          ExcMessage("Material model Melt visco plastic only works if there is a "
+                                     "compositional field called stress_xy."));
+              AssertThrow(this->introspection().compositional_name_exists("stress_xz"),
+                          ExcMessage("Material model Melt visco plastic only works if there is a "
+                                     "compositional field called stress_xz."));
+              AssertThrow(this->introspection().compositional_name_exists("stress_yz"),
+                          ExcMessage("Material model Melt visco plastic only works if there is a "
+                                     "compositional field called stress_yz."));
+            }
 
-          // Strain weakening parameters
-          use_strain_weakening             = prm.get_bool ("Use strain weakening");
-          start_strain_weakening_intervals = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Start strain weakening intervals"))),
-                                                                                     n_fields,
-                                                                                     "Start strain weakening intervals");
-          end_strain_weakening_intervals = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("End strain weakening intervals"))),
-                                                                                   n_fields,
-                                                                                   "End strain weakening intervals");
-          cohesion_strain_weakening_factors = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Cohesion strain weakening factors"))),
-                                                                                      n_fields,
-                                                                                      "Cohesion strain weakening factors");
-          friction_strain_weakening_factors = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Friction strain weakening factors"))),
-                                                                                      n_fields,
-                                                                                      "Friction strain weakening factors");
+          AssertThrow(this->introspection().compositional_name_exists("plastic_strain"),
+                          ExcMessage("Material model Melt visco plastic only works if there is a "
+                                     "compositional field called plastic_strain."));
 
-          // Elastic parameters
-          elastic_shear_moduli = Utilities::possibly_extend_from_1_to_N (Utilities::string_to_double(Utilities::split_string_list(prm.get("Elastic shear moduli"))),
-                                                                         n_fields,
-                                                                         "Elastic shear moduli");
-          elastic_time_step = prm.get_double ("Elastic time step");
-          if (this->convert_output_to_years ())
-            elastic_time_step *= year_in_seconds;
+          AssertThrow(this->introspection().compositional_name_exists("peridotite"),
+                      ExcMessage("Material model Melt visco plastic only works if there is a "
+                                 "compositional field called peridotite."));
 
-          model_is_viscoelastic = prm.get_bool ("Model is viscoelastic");
+          if (this->include_melt_transport())
+            {
+              AssertThrow(this->introspection().compositional_name_exists("porosity"),
+                          ExcMessage("Material model Melt visco plastic with melt transport only "
+                                     "works if there is a compositional field called porosity."));
+            }
 
         }
         prm.leave_subsection();
       }
       prm.leave_subsection();
 
-      /* After parsing the parameters for depth dependent, it is essential to parse
-      parameters related to the base model. */
-      base_model->parse_parameters(prm);
-      this->model_dependence = base_model->get_model_dependence();
     }
   }
 }

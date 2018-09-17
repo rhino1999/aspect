@@ -22,8 +22,11 @@
 #define _aspect_material_model_melt_visco_plastic_h
 
 #include <aspect/material_model/interface.h>
+#include <aspect/simulator_access.h>
 #include <aspect/postprocess/melt_statistics.h>
 #include <aspect/melt.h>
+
+#include<deal.II/fe/component_mask.h>
 
 namespace aspect
 {
@@ -59,9 +62,9 @@ namespace aspect
          * beginning of the program after parse_parameters is run and after
          * the SimulatorAccess (if applicable) is initialized.
          */
-        virtual
-        void
-        initialize ();
+        //virtual
+        //void
+        //initialize ();
 
         /**
          * Return whether the model is compressible or not.  Incompressibility
@@ -113,6 +116,48 @@ namespace aspect
          */
 
       private:
+
+        double ref_temperature;
+
+        std::vector<double> densities;
+        std::vector<double> thermal_expansivities;
+        std::vector<double> specific_heats;
+        std::vector<double> thermal_conductivities;
+
+        double min_strain_rate;
+        double ref_strain_rate;
+        double min_viscosity;
+        double max_viscosity;
+
+        double ref_viscosity;
+
+        enum averaging_scheme
+        {
+          harmonic,
+          arithmetic,
+          geometric,
+          maximum_composition
+        } viscosity_averaging;
+
+        std::vector<double> linear_viscosities;
+
+        std::vector<double> elastic_shear_moduli;
+        bool use_fixed_elastic_time_step;
+        bool use_stress_averaging;
+        double fixed_elastic_time_step;
+
+        std::vector<double> angles_internal_friction;
+        std::vector<double> cohesions;
+
+        double maximum_yield_stress;
+
+        std::vector<double> start_plastic_strain_weakening_intervals;
+        std::vector<double> end_plastic_strain_weakening_intervals;
+        std::vector<double> cohesion_plastic_strain_weakening_factors;
+        std::vector<double> friction_plastic_strain_weakening_factors;
+
+        std::vector<double> strength_reductions;
+
         double melt_density_change;
         double xi_0;
         double eta_f;
@@ -148,35 +193,17 @@ namespace aspect
         // melt fraction exponent
         double beta;
 
-        double ref_strain_rate;
+        /**
+         * A function that returns a ComponentMask that represents all compositional
+         * fields that should be considered 'volumetric', that is representing a
+         * physical proportion of the material, e.g. volume fraction of peridotite
+         * (as opposed to non-volumetric quantities like the amount of finite-strain).
+         */
+        ComponentMask get_volumetric_composition_mask() const;
 
-        // linear viscosity option parameters
-        bool use_linear_viscosities;
-        std::vector<double> linear_viscosities;
-
-        // strain weakening parameters
-        bool use_strain_weakening;
-        std::vector<double> start_strain_weakening_intervals;
-        std::vector<double> end_strain_weakening_intervals;
-        std::vector<double> cohesion_strain_weakening_factors;
-        std::vector<double> friction_strain_weakening_factors;
-
-        // plasticity parameters
-        std::vector<double> angles_internal_friction;
-        std::vector<double> cohesions;
-        std::vector<double> strength_reductions;
-        std::vector<int> field_used_in_viscosity_averaging;
-        double min_strain_rate;
-        double min_visc;
-        double max_visc;
-
-        // elasticity parameters
-        std::vector<double> elastic_shear_moduli;
-        double elastic_time_step;
-        bool model_is_viscoelastic;
-
-        std::vector<double> compute_volume_fractions(
-          const std::vector<double> &compositional_fields) const;
+        double average_value (const std::vector<double> &volume_fractions,
+                              const std::vector<double> &parameter_values,
+                              const averaging_scheme &average_type) const;
 
         /**
          * Percentage of material that is molten for a given @p temperature and
@@ -188,11 +215,6 @@ namespace aspect
         melt_fraction (const double temperature,
                        const double pressure) const;
 
-
-        /**
-         * Pointer to the material model used as the base model
-         */
-        std::shared_ptr<MaterialModel::Interface<dim> > base_model;
     };
 
   }
