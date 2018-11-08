@@ -228,7 +228,7 @@ namespace aspect
     }
 
     /**
-     * @note This benchmark only talks about the flow field, not about a
+     * @note This benchmark only considers the flow field, not the
      * temperature field. All quantities related to the temperature are
      * therefore set to zero in the implementation of this class.
      *
@@ -295,10 +295,12 @@ namespace aspect
               const double porosity = std::max(in.composition[i][porosity_idx],0.0);
               if (use_coble_creep)
                 out.viscosities[i] = eta_0 * pow(1.-sqrt(background_porosity/0.24),-2.) * pow(1.-sqrt(porosity/0.24),2.);
-              else
+              else if (cutoff_viscosity_at_disaggregation)
                 out.viscosities[i] = pow(1./(eta_0 * std::exp(-porosity_exponent*(porosity - background_porosity)))
                                      + 1./(10.0 * eta_0 * std::exp(-70.0*(porosity - background_porosity))),-1.0)
                                      + eta_f;
+              else
+                out.viscosities[i] = eta_0 * std::exp(-porosity_exponent*(porosity - background_porosity));
 
               if (in.strain_rate.size())
                 {
@@ -426,6 +428,7 @@ namespace aspect
 
         bool compute_growth_rate;
         bool use_coble_creep;
+        bool cutoff_viscosity_at_disaggregation;
 
         double bulk_to_shear_ratio;
         double bulk_viscosity_exponent;
@@ -564,6 +567,12 @@ namespace aspect
                              Patterns::Bool (),
                              "Whether to compute the shear viscosity assuming Coble creep or "
                              "using the usual exponential dependence on the porosity. ");
+          prm.declare_entry ("Cut off viscosity at disaggregation", "true",
+                             Patterns::Bool (),
+                             "Whether to use the usual exponential dependence of viscosity on "
+                             "the porosity (if false), or to multiply it by a factor that "
+                             "guarantuees the viscosity is reduced to the melt viscosity at "
+                             "disaggregation (if true). ");
         }
         prm.leave_subsection();
       }
@@ -599,6 +608,7 @@ namespace aspect
           bulk_viscosity_exponent    = prm.get_double ("Bulk viscosity exponent");
           compute_growth_rate        = prm.get_bool ("Compute growth rate");
           use_coble_creep            = prm.get_bool ("Use Coble creep");
+          cutoff_viscosity_at_disaggregation = prm.get_bool ("Cut off viscosity at disaggregation");
         }
         prm.leave_subsection();
       }
@@ -688,7 +698,7 @@ namespace aspect
 
       // use a fixed number as seed for random generator
       // this is important if we run the code on more than 1 processor
-      std::srand(14);
+      std::srand(2);
 
       // compute the random white noise on the resolution given in the input file,
       // it will be interpolated onto the grid later on

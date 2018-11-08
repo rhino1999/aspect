@@ -1,11 +1,15 @@
 # Listing of Parameters
 # ---------------------
-# Set up the magmatic shear bands testcase
-# for Newtonian rheology and analyze it using
-# the relations given in Spiegelman (2003):
-# Linear analysis of melt band formation by 
-# simple shear, Geochemistry, Geophysics,
-# Geosystems, 4(9), 8615.
+# Set up the a test case with sinusoidal porosity perturbations, 
+# similar to the magmatic shear bands testcase given in Spiegelman (2003):
+# Linear analysis of melt band formation by simple shear, Geochemistry, 
+# Geophysics, Geosystems, 4(9), 8615.
+# However, in contrast to Spiegelman (2003), this test cases uses a rheology
+# that includes the effects of microscopic surface tension as described in 
+# Bercovici, D., & Rudge, J. F. (2016). A mechanism for mode selection in melt 
+# band instabilities. Earth and Planetary Science Letters, 433, 139-145. 
+# Here, we compares the modelled growth rate against the one predicted by 
+# linear stability analysis as given in Equation (18) in Bercovici & Rudge (2016). 
 
 set Additional shared libraries            = ./libsurface_tension.so, $ASPECT_SOURCE_DIR/benchmarks/shear_bands/libshear_bands.so
 
@@ -22,8 +26,6 @@ set End time                               = 0
 
 set Pressure normalization                 = surface
 set Surface pressure                       = 0
-set Resume computation                     = false
-
 set Use years in output instead of seconds = false
 
 subsection Solver parameters
@@ -37,8 +39,10 @@ end
 
 subsection Discretization
   subsection Stabilization parameters
-    set beta  = 0.0 # default: 0.078
+    set beta  = 0.0
   end
+
+  set Composition polynomial degree = 3
 end
 
 subsection Compositional fields
@@ -61,12 +65,12 @@ subsection Boundary composition model
   set List of model names = initial composition
 end
 
-# we apply simple shear here, so that the top and bottom boundaries 
-# move with the same speed u0, but in opposite directions
+# We apply simple shear here, so that the top and bottom boundaries 
+# move with the same speed u0, but in opposite directions.
 subsection Boundary velocity model
   set Prescribed velocity boundary indicators = 2:function, 3:function
   subsection Function
-    set Function constants = u0=1e-6,ymid=0.0005 # was 2.121320344e-7
+    set Function constants = u0=2.25e-8,ymid=3.75e-5
     set Function expression = u0*(y/ymid-1.0);0
   end
 end
@@ -75,22 +79,22 @@ subsection Geometry model
   set Model name = box
 
   subsection Box
-    set X extent  = 0.004
-    set Y extent  = 0.001
+    set X extent  = 2.828427125e-4
+    set Y extent  = 7.5e-5
     set X periodic = true
-    set X repetitions = 4
+    set X repetitions = 3
   end
 
 end
 
 
+# The effect of gravity is so small that it can be neglected. 
 subsection Gravity model
   set Model name = vertical
 
   subsection Vertical
     set Magnitude = 0.0
   end
-
 end
 
 
@@ -106,9 +110,10 @@ subsection Initial composition model
   set Model name = melt bands initial condition
 
   subsection Plane wave melt bands initial condition
-    set Wave amplitude = 1e-5
-    set Initial band angle = 30
-    set Wave number = 8000
+    set Wave amplitude = 1e-3
+    set Initial band angle = 45
+    set Wave number = 4e4
+    set Noise amplitude = 0
   end
 end
 
@@ -117,19 +122,23 @@ subsection Material model
 
   subsection Shear bands tension material
     set Permeability exponent = 2
-    set Porosity exponent = 1 #0.9999   #b
-    set Background porosity = 0.01      #phi_0
+    set Porosity exponent = 27             #b
+    set Background porosity = 0.03         #phi_0
 
-    # TODO: get that from the boundary conditions!
-    set Reference strain rate = 1e-3    #epsilon_0
-    set Grain size = 1                  #d
-#    set Geometry factor = 1e-10
-#    set Porosity area factor = -0.001
-    set Reference permeability = 5e-9
+    set Reference strain rate = 3e-4       # epsilon_0
+    set Grain size = 2e-6                  # d
+    set Geometry factor = 3.34
+    set Porosity area factor = -0.35
+    set Reference permeability = 0.002777778
     set Reference melt viscosity = 10
-    set Reference shear viscosity = 1.e11   #mu_0
-    set Strain rate exponent = 1        #n
-    set Surface tension = 1e-5             #gamma
+    set Reference shear viscosity = 6e11   # mu_0
+    set Strain rate exponent = 1           # n
+    set Surface tension = 1                # gamma
+
+    set Bulk to shear viscosity ratio = 1.666666667
+
+    set Compute growth rate  = true
+    set Cut off viscosity at disaggregation = false
   end
 end
 
