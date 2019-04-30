@@ -196,7 +196,7 @@ namespace aspect
       // Initial viscosities
       for (unsigned int i=0; i<in.position.size(); ++i)
         {
-           const std::vector<double> volume_fractions = compute_volume_fractions(in.composition[i],volumetric_compositions);
+           const std::vector<double> volume_fractions = MaterialUtilities::compute_volume_fractions(in.composition[i],volumetric_compositions);
            out.viscosities[i] = average_value(volume_fractions, linear_viscosities, viscosity_averaging);
         }
 
@@ -324,12 +324,16 @@ namespace aspect
       if ( in.strain_rate.size() )
         {
 
+
+          // Store which components do not represent volumetric compositions (e.g. strain components).
+          const ComponentMask volumetric_compositions = get_volumetric_composition_mask();
+
           // 5) Compute plastic weakening of visco(elastic) viscosity
           for (unsigned int i=0; i<in.position.size(); ++i)
             {
 
               // Compute volume fractions
-              const std::vector<double> volume_fractions = compute_volume_fractions(in.composition[i]);
+              const std::vector<double> volume_fractions = MaterialUtilities::compute_volume_fractions(in.composition[i]);
 
               // calculate deviatoric strain rate (Keller et al. eq. 13)
               const double edot_ii = ( (this->get_timestep_number() == 0 && in.strain_rate[i].norm() <= std::numeric_limits<double>::min())
