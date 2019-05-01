@@ -26,8 +26,6 @@
 #include <aspect/postprocess/melt_statistics.h>
 #include <aspect/melt.h>
 
-#include<deal.II/fe/component_mask.h>
-
 namespace aspect
 {
   namespace MaterialModel
@@ -131,30 +129,17 @@ namespace aspect
 
         double ref_viscosity;
 
-        enum averaging_scheme
-        {
-          harmonic,
-          arithmetic,
-          geometric,
-          maximum_composition
-        } viscosity_averaging;
+        /**
+         * Enumeration for selecting which viscosity averaging scheme to use.
+         */
+        MaterialUtilities::CompositionalAveragingOperation viscosity_averaging;
 
         std::vector<double> linear_viscosities;
-
-        std::vector<double> elastic_shear_moduli;
-        bool use_fixed_elastic_time_step;
-        bool use_stress_averaging;
-        double fixed_elastic_time_step;
 
         std::vector<double> angles_internal_friction;
         std::vector<double> cohesions;
 
         double maximum_yield_stress;
-
-        std::vector<double> start_plastic_strain_weakening_intervals;
-        std::vector<double> end_plastic_strain_weakening_intervals;
-        std::vector<double> cohesion_plastic_strain_weakening_factors;
-        std::vector<double> friction_plastic_strain_weakening_factors;
 
         std::vector<double> strength_reductions;
 
@@ -163,7 +148,6 @@ namespace aspect
         double eta_f;
         double reference_permeability;
         double alpha_phi;
-        double depletion_density_change;
         double freezing_rate;
 
         /**
@@ -192,18 +176,6 @@ namespace aspect
 
         // melt fraction exponent
         double beta;
-
-        /**
-         * A function that returns a ComponentMask that represents all compositional
-         * fields that should be considered 'volumetric', that is representing a
-         * physical proportion of the material, e.g. volume fraction of peridotite
-         * (as opposed to non-volumetric quantities like the amount of finite-strain).
-         */
-        ComponentMask get_volumetric_composition_mask() const;
-
-        double average_value (const std::vector<double> &volume_fractions,
-                              const std::vector<double> &parameter_values,
-                              const averaging_scheme &average_type) const;
 
         /**
          * Percentage of material that is molten for a given @p temperature and
