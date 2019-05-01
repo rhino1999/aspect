@@ -1,5 +1,5 @@
 
-set Additional shared libraries = /home/dannberg/software/aspect-master/cookbooks/keller_2013/libkeller_2013.so
+set Additional shared libraries = ./libkeller_2013.so
 
 #####  Global parameters
 set Dimension                              = 2

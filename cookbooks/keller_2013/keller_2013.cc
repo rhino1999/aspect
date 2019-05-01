@@ -32,7 +32,7 @@ namespace aspect
         /**
          * Pointer to the material model used as the base model
          */
-        std_cxx11::shared_ptr<MaterialModel::Interface<dim> > base_model;
+        std::shared_ptr<MaterialModel::Interface<dim> > base_model;
 
         /**
          * A function object representing the melting rate.
@@ -84,7 +84,7 @@ namespace aspect
       // overwrite the melting rate
       const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
       const unsigned int peridotite_idx = this->introspection().compositional_index_for_name("peridotite");
-      if (in.cell && this->get_timestep_number() > 0)
+      if (in.current_cell.state() == IteratorState::valid && this->get_timestep_number() > 0)
         {
           for (unsigned int q=0; q < in.position.size(); ++q)
             {
@@ -98,17 +98,6 @@ namespace aspect
               out.viscosities[q] *= (1.0 - in.composition[q][porosity_idx]);
             }
         }
-
-      // fill melt outputs if they exist
-//      MeltOutputs<dim> *melt_out = out.template get_additional_output<MeltOutputs<dim> >();
-//
-//      if (melt_out != NULL)
-//        {
-//          for (unsigned int q=0; q < in.position.size(); ++q)
-//            {
-//              melt_out->compaction_viscosities[q] *= (1.0 - in.composition[q][porosity_idx]);
-//            }
-//        }
     }
 
 
