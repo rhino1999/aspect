@@ -143,26 +143,36 @@ namespace aspect
         {
           if (in.current_cell.state() == IteratorState::valid)
             {
-              // get fluid pressure from the current solution
-              Functions::FEFieldFunction<dim, DoFHandler<dim>, LinearAlgebra::BlockVector>
-              fe_value_current(this->get_dof_handler(), this->get_solution(), this->get_mapping());
-              fe_value_current.set_active_cell(in.current_cell);
+              std::vector<Point<dim> > quadrature_positions(in.position.size());
 
-              fe_value_current.value_list(in.position,
-                                          fluid_pressures,
-                                          this->introspection().variable("fluid pressure").first_component_index);
+              for (unsigned int i=0; i < in.position.size(); ++i)
+                quadrature_positions[i] = this->get_mapping().transform_real_to_unit_cell(in.current_cell, in.position[i]);
+
+              // FEValues requires a quadrature and we provide the default quadrature
+              // as we only need to evaluate the solution and gradients.
+              FEValues<dim> fe_values (this->get_mapping(),
+                                       this->get_fe(),
+                                       Quadrature<dim>(quadrature_positions),
+                                       update_values | update_gradients);
+
+              fe_values.reinit (in.current_cell);
+
+              // get fluid pressure from the current solution
+              const FEValuesExtractors::Scalar extractor_pressure = this->introspection().variable("fluid pressure").extractor_scalar();
+              fe_values[extractor_pressure].get_function_values (this->get_solution(),
+            		                                             fluid_pressures);
 
               // get volumetric strain rate
               // see Keller et al. eq. 11.
-              std::vector<Tensor<1,dim> > velocity_gradients(in.position.size());
+              std::vector<Tensor<2,dim> > velocity_gradients (quadrature_positions.size(), Tensor<2,dim>());
+              fe_values[this->introspection().extractors.velocities].get_function_gradients (this->get_solution(),
+                                                                                             velocity_gradients);
               for (unsigned int d=0; d<dim; ++d)
-                {
-                  fe_value_current.gradient_list(in.position,
-                                                 velocity_gradients,
-                                                 this->introspection().component_indices.velocities[d]);
-                  for (unsigned int i=0; i<in.position.size(); ++i)
-                    volumetric_strain_rates[i] += velocity_gradients[i][d];
-                }
+                for (unsigned int e=0; e<dim; ++e)
+                  {
+                    for (unsigned int i=0; i<in.position.size(); ++i)
+                      volumetric_strain_rates[i] += 0.5 * (velocity_gradients[i][d][e] + velocity_gradients[i][e][d]);
+                  }
             }
 
           // 3) Get porosity, melt density and update melt reaction terms
