@@ -149,6 +149,7 @@ namespace aspect
         double reference_permeability;
         double alpha_phi;
         double freezing_rate;
+        double melting_time_scale;
 
         /**
          * Parameters for anhydrous melting of peridotite after Katz, 2003
