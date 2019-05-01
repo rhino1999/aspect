@@ -372,11 +372,7 @@ namespace aspect
               const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
               double porosity = std::min(1.0, std::max(in.composition[i][porosity_idx],0.0));
               melt_out->fluid_viscosities[i] = eta_f;
-              melt_out->permeabilities[i] = (this->get_melt_handler().is_melt_cell(in.current_cell)
-                                             ?
-                                             std::max(reference_permeability * std::pow(porosity,3) * std::pow(1.0-porosity,2),0.0)
-                                             :
-                                             0.0);
+              melt_out->permeabilities[i] = reference_permeability * std::pow(porosity,3) * std::pow(1.0-porosity,2);
 
               melt_out->fluid_densities[i] = out.densities[i] + melt_density_change;
               melt_out->fluid_density_gradients[i] = 0.0;
