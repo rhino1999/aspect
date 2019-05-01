@@ -31,6 +31,50 @@ namespace aspect
   namespace MaterialModel
   {
 
+    namespace
+    {
+      std::vector<std::string> make_plastic_additional_outputs_names()
+      {
+        std::vector<std::string> names;
+        names.emplace_back("current_cohesions");
+        names.emplace_back("current_friction_angles");
+        names.emplace_back("plastic_yielding");
+        return names;
+      }
+    }
+
+    template <int dim>
+    PlasticAdditionalOutputs<dim>::PlasticAdditionalOutputs (const unsigned int n_points)
+      :
+      NamedAdditionalMaterialOutputs<dim>(make_plastic_additional_outputs_names()),
+      cohesions(n_points, numbers::signaling_nan<double>()),
+      friction_angles(n_points, numbers::signaling_nan<double>()),
+      yielding(n_points, numbers::signaling_nan<double>())
+    {}
+
+    template <int dim>
+    std::vector<double>
+    PlasticAdditionalOutputs<dim>::get_nth_output(const unsigned int idx) const
+    {
+      AssertIndexRange (idx, 3);
+      switch (idx)
+        {
+          case 0:
+            return cohesions;
+
+          case 1:
+            return friction_angles;
+
+          case 2:
+            return yielding;
+
+          default:
+            AssertThrow(false, ExcInternalError());
+        }
+      // We will never get here, so just return something
+      return cohesions;
+    }
+
     template <int dim>
     double
     MeltViscoPlastic<dim>::
@@ -287,12 +331,28 @@ namespace aspect
                   tensile_strength += volume_fractions[c]*tensile_strength_c;
                 }
 
+              bool plastic_yielding = false;
+
               // If the viscous stress is greater than the yield strength, rescale the viscosity back to yield surface
               // and reaction term for plastic finite strain
               if (viscous_stress >= yield_strength)
                 {
+                  plastic_yielding = true;
                   out.viscosities[i] = yield_strength / (2.0 * edot_ii);
                 }
+
+              // Calculate average internal friction angle and cohehsion values
+              const double cohesion = MaterialUtilities::average_value(volume_fractions, cohesions, viscosity_averaging);
+              const double angle_internal_friction = MaterialUtilities::average_value(volume_fractions, angles_internal_friction, viscosity_averaging);
+
+             PlasticAdditionalOutputs<dim> *plastic_out = out.template get_additional_output<PlasticAdditionalOutputs<dim> >();
+             if (plastic_out != nullptr)
+               {
+                 plastic_out->cohesions[i] = cohesion;
+                 plastic_out->friction_angles[i] = angle_internal_friction;
+                 plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
+              }
+
 
               // Limit the viscosity with specified minimum and maximum bounds
               out.viscosities[i] = std::min(std::max(out.viscosities[i], min_viscosity), max_viscosity);
@@ -683,6 +743,19 @@ namespace aspect
       prm.leave_subsection();
 
     }
+
+    template <int dim>
+    void
+    MeltViscoPlastic<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
+    {
+      if (out.template get_additional_output<PlasticAdditionalOutputs<dim> >() == nullptr)
+        {
+          const unsigned int n_points = out.viscosities.size();
+          out.additional_outputs.push_back(
+            std::make_shared<MaterialModel::PlasticAdditionalOutputs<dim>> (n_points));
+        }
+    }
+
   }
 }
 

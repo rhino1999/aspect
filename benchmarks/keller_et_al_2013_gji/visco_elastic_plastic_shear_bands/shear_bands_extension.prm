@@ -158,7 +158,7 @@ subsection Postprocess
   set List of postprocessors = velocity statistics, basic statistics, temperature statistics, visualization
   set Run postprocessors on nonlinear iterations = true
   subsection Visualization
-    set List of output variables = density, viscosity, strain rate
+    set List of output variables = density, viscosity, strain rate, named additional outputs
 
 
     #subsection Melt material properties

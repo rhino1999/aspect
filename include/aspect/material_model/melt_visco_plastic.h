@@ -33,6 +33,40 @@ namespace aspect
     using namespace dealii;
 
     /**
+     * Additional output fields for the plastic parameters weakened (or hardened)
+     * by strain to be added to the MaterialModel::MaterialModelOutputs structure
+     * and filled in the MaterialModel::Interface::evaluate() function.
+     */
+    template <int dim>
+    class PlasticAdditionalOutputs : public NamedAdditionalMaterialOutputs<dim>
+    {
+      public:
+        PlasticAdditionalOutputs(const unsigned int n_points);
+
+        virtual std::vector<double> get_nth_output(const unsigned int idx) const;
+
+        /**
+         * Cohesions at the evaluation points passed to
+         * the instance of MaterialModel::Interface::evaluate() that fills
+         * the current object.
+         */
+        std::vector<double> cohesions;
+
+        /**
+         * Internal angles of friction at the evaluation points passed to
+         * the instance of MaterialModel::Interface::evaluate() that fills
+         * the current object.
+         */
+        std::vector<double> friction_angles;
+
+        /**
+         * The area where the viscous stress exceeds the plastic yield strength,
+         * and viscosity is rescaled back to the yield envelope.
+         */
+        std::vector<double> yielding;
+    };
+
+    /**
      * A material model that implements a simple formulation of the
      * material parameters required for the modelling of melt transport,
      * including a source term for the porosity according to the melting
@@ -113,6 +147,10 @@ namespace aspect
          * @}
          */
 
+        virtual
+        void
+        create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const;
+
       private:
 
         double ref_temperature;
@@ -187,6 +225,17 @@ namespace aspect
         double
         melt_fraction (const double temperature,
                        const double pressure) const;
+
+        /**
+         * A function that fills the plastic additional output in the
+         * MaterialModelOutputs object that is handed over, if it exists.
+         * Does nothing otherwise.
+         */
+        void fill_plastic_outputs (const unsigned int point_index,
+                                   const std::vector<double> &volume_fractions,
+                                   const bool plastic_yielding,
+                                   const MaterialModel::MaterialModelInputs<dim> &in,
+                                   MaterialModel::MaterialModelOutputs<dim> &out) const;
 
     };
 
