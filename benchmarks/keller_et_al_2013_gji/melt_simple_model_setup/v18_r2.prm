@@ -5,7 +5,7 @@ set Start time                             = 0
 set End time                               = 10e3
 set Use years in output instead of seconds = true
 set Nonlinear solver scheme                = iterated Advection and Stokes
-set Nonlinear solver tolerance             = 1e-3
+set Nonlinear solver tolerance             = 1e-4
 set Max nonlinear iterations               = 50
 set CFL number                             = 1.0
 set Output directory                       = output_v18_r2
@@ -16,8 +16,8 @@ set Surface pressure                       = 0
 # Solver settings
 subsection Solver parameters
   subsection Stokes solver parameters
-    set Linear solver tolerance = 1e-7
-    set Number of cheap Stokes solver steps = 0
+    set Linear solver tolerance = 1e-8
+    set Number of cheap Stokes solver steps = 200
   end
 end
 
@@ -26,9 +26,6 @@ subsection Discretization
   set Composition polynomial degree     = 2
   set Stokes velocity polynomial degree = 2
   set Temperature polynomial degree     = 1
-  subsection Stabilization parameters
-    set beta  = 0.2
-  end
 end
 
 # Model geometry (6x4 km, 0.1 km spacing)
@@ -36,8 +33,8 @@ subsection Geometry model
   set Model name = box
 
   subsection Box
-    set X repetitions = 60
-    set Y repetitions = 40
+    set X repetitions = 3
+    set Y repetitions = 2
     set X extent      = 6e3
     set Y extent      = 4e3
   end
@@ -46,7 +43,7 @@ end
 # Mesh refinement specifications 
 subsection Mesh refinement
   set Initial adaptive refinement        = 0
-  set Initial global refinement          = 0
+  set Initial global refinement          = 5
   set Time steps between mesh refinement = 0
 end
 
@@ -70,6 +67,7 @@ end
 subsection Melt settings
   set Include melt transport = true
   set Heat advection by melt = false
+  set Melt scaling factor threshold = 1e-6
 end
 
 # Fluid pressure boundary condition
@@ -100,13 +98,13 @@ end
 
 # Composition boundary conditions
 subsection Boundary composition model
-  set Fixed composition boundary indicators   = left, right
+  set Fixed composition boundary indicators   = 
   set Model name = initial composition
 end
 
 # Temperature boundary and initial conditions
 subsection Boundary temperature model
-  set Fixed temperature boundary indicators   = bottom, top, left, right
+  set Fixed temperature boundary indicators   = bottom, top
   set Model name = initial temperature
 end
 
@@ -123,7 +121,7 @@ subsection Material model
 
   set Model name = melt visco plastic
 
-  set Material averaging = harmonic average
+#  set Material averaging = harmonic average
 
   subsection Melt visco plastic
 
@@ -134,7 +132,7 @@ subsection Material model
 
     set Reference viscosity = 1e17
 
-    set Viscosity averaging scheme = harmonic
+#    set Viscosity averaging scheme = harmonic
 
     set Linear viscosities = 1e18
 
@@ -180,7 +178,7 @@ subsection Postprocess
     set List of output variables = density, viscosity, strain rate, melt fraction, melt material properties, named additional outputs
 
     subsection Melt material properties
-      set List of properties = fluid density, permeability, fluid viscosity, compaction viscosity
+      set List of properties = fluid density, permeability, fluid viscosity, compaction viscosity, is melt cell
     end
     set Time between graphical output = 0
     set Interpolate output = false
