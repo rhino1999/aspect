@@ -206,19 +206,12 @@ namespace aspect
               // get fluid pressure from the current solution
               const FEValuesExtractors::Scalar extractor_pressure = this->introspection().variable("fluid pressure").extractor_scalar();
               fe_values[extractor_pressure].get_function_values (this->get_solution(),
-            		                                             fluid_pressures);
+                                                                 fluid_pressures);
 
               // get volumetric strain rate
               // see Keller et al. eq. 11.
-              std::vector<Tensor<2,dim> > velocity_gradients (quadrature_positions.size(), Tensor<2,dim>());
-              fe_values[this->introspection().extractors.velocities].get_function_gradients (this->get_solution(),
-                                                                                             velocity_gradients);
-              for (unsigned int d=0; d<dim; ++d)
-                for (unsigned int e=0; e<dim; ++e)
-                  {
-                    for (unsigned int i=0; i<in.position.size(); ++i)
-                      volumetric_strain_rates[i] += 0.5 * (velocity_gradients[i][d][e] + velocity_gradients[i][e][d]);
-                  }
+              fe_values[this->introspection().extractors.velocities].get_function_divergences (this->get_solution(),
+                  volumetric_strain_rates);
             }
 
           const double time_scale = this->convert_output_to_years() ? year_in_seconds : 1.0;
@@ -262,21 +255,21 @@ namespace aspect
                           else
                             reaction_rate_out->reaction_rates[i][c] = 0.0;
                         }
-                 
+
                       out.reaction_terms[i][c] = 0.0;
                     }
-                 else
-                   {
-                     // Set reaction rates to 0
-                     if (reaction_rate_out != nullptr)
+                  else
+                    {
+                      // Set reaction rates to 0
+                      if (reaction_rate_out != nullptr)
                         reaction_rate_out->reaction_rates[i][c] = 0.;
-                     //
-                     if (c == porosity_idx)
-                       out.reaction_terms[i][c] = function.value(in.position[i]) / time_scale * out.densities[i];
-                     else if (c == peridotite_idx)
-                       out.reaction_terms[i][c] = 0.0;
-                   }
-               }
+                      //
+                      if (c == porosity_idx)
+                        out.reaction_terms[i][c] = function.value(in.position[i]) / time_scale * out.densities[i];
+                      else if (c == peridotite_idx)
+                        out.reaction_terms[i][c] = 0.0;
+                    }
+                }
 
               // 4) Reduce shear viscosity due to melt presence
               const double porosity = std::min(1.0, std::max(in.composition[i][porosity_idx],0.0));
@@ -296,7 +289,7 @@ namespace aspect
               double porosity = 0.0;
 
               if (this->include_melt_transport() )
-            	porosity = std::min(1.0, std::max(in.composition[i][this->introspection().compositional_index_for_name("porosity")],0.0));
+                porosity = std::min(1.0, std::max(in.composition[i][this->introspection().compositional_index_for_name("porosity")],0.0));
 
               // calculate deviatoric strain rate (Keller et al. eq. 13)
               const double edot_ii = ( (this->get_timestep_number() == 0 && in.strain_rate[i].norm() <= std::numeric_limits<double>::min())
@@ -314,10 +307,10 @@ namespace aspect
               // otherwise,
               // P_effective = P_bulk, which equals P_solid (which is given by in.pressure[i])
               const double effective_pressure = ((this->include_melt_transport() && this->get_melt_handler().is_melt_cell(in.current_cell))
-                                                     ?
-                                                     (1. - porosity) * (in.pressure[i] - fluid_pressures[i])
-                                                     :
-                                                     in.pressure[i]);
+                                                 ?
+                                                 (1. - porosity) * (in.pressure[i] - fluid_pressures[i])
+                                                 :
+                                                 in.pressure[i]);
 
               double yield_strength = 0.0;
               double tensile_strength = 0.0;
@@ -360,18 +353,17 @@ namespace aspect
                   out.viscosities[i] = yield_strength / (2.0 * edot_ii);
                 }
 
-              // Calculate average internal friction angle and cohehsion values
+              // Calculate average internal friction angle and cohesion values
               const double cohesion = MaterialUtilities::average_value(volume_fractions, cohesions, viscosity_averaging);
               const double angle_internal_friction = MaterialUtilities::average_value(volume_fractions, angles_internal_friction, viscosity_averaging);
 
-             PlasticAdditionalOutputs<dim> *plastic_out = out.template get_additional_output<PlasticAdditionalOutputs<dim> >();
-             if (plastic_out != nullptr)
-               {
-                 plastic_out->cohesions[i] = cohesion;
-                 plastic_out->friction_angles[i] = angle_internal_friction;
-                 plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
-              }
-
+              PlasticAdditionalOutputs<dim> *plastic_out = out.template get_additional_output<PlasticAdditionalOutputs<dim> >();
+              if (plastic_out != nullptr)
+                {
+                  plastic_out->cohesions[i] = cohesion;
+                  plastic_out->friction_angles[i] = angle_internal_friction;
+                  plastic_out->yielding[i] = plastic_yielding ? 1 : 0;
+                }
 
               // Limit the viscosity with specified minimum and maximum bounds
               out.viscosities[i] = std::min(std::max(out.viscosities[i], min_viscosity), max_viscosity);
@@ -412,8 +404,15 @@ namespace aspect
 
               // effective compaction viscosity (Keller et al. eq (43) )
               // NB: I've added a minus sign as according to eq 43
-              if (in.strain_rate.size() && compaction_pressure > volumetric_yield_strength[i])
-                melt_out->compaction_viscosities[i] =  -volumetric_yield_strength[i] / std::max(volumetric_strain_rates[i], min_strain_rate);
+              if (in.strain_rate.size() && compaction_pressure < volumetric_yield_strength[i])
+                {
+                  // the volumetric strain rate might be negative, but will always have the same sign as the volumetric yield strength
+                  if (volumetric_strain_rates[i] >= 0)
+                    volumetric_strain_rates[i] = std::max(volumetric_strain_rates[i], min_strain_rate);
+                  else
+                    volumetric_strain_rates[i] = std::min(volumetric_strain_rates[i], -min_strain_rate);
+                  melt_out->compaction_viscosities[i] = - volumetric_yield_strength[i] / volumetric_strain_rates[i];
+                }
 
               // Limit the viscosity with specified minimum and maximum bounds
               melt_out->compaction_viscosities[i] = std::min(std::max(melt_out->compaction_viscosities[i], min_viscosity), max_viscosity);
@@ -654,7 +653,7 @@ namespace aspect
           prm.enter_subsection("Melting rate function");
           {
             Functions::ParsedFunction<dim>::declare_parameters (prm, 1);
-          } 
+          }
           prm.leave_subsection();
 
         }
@@ -758,7 +757,7 @@ namespace aspect
                             << "is shown below.\n";
                   throw;
                 }
-               prm.leave_subsection();
+              prm.leave_subsection();
             }
 
           AssertThrow(this->introspection().compositional_name_exists("peridotite"),
