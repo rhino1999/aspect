@@ -4,32 +4,41 @@ set Additional shared libraries = ./libkeller_2013.so
 #####  Global parameters
 set Dimension                              = 2
 set Start time                             = 0
-set End time                               = 10e6
+set End time                               = 0e6
 set Use years in output instead of seconds = true
-set Use direct solver for Stokes system    = true
-set Linear solver tolerance                = 1e-7
-set Nonlinear solver scheme                = iterated IMPES
+set Nonlinear solver scheme                = single Advection, iterated Stokes
 set Nonlinear solver tolerance             = 1e-4
-set Max nonlinear iterations               = 10
-set Number of cheap Stokes solver steps    = 0
+set Max nonlinear iterations               = 50
 set CFL number                             = 0.1
-set Maximum time step                      = 100
-set Output directory                       = output5
+set Output directory                       = output_keller_2013
 set Timing output frequency                = 1
-set Pressure normalization                 = surface
-set Surface pressure                       = 50e6
 set Pressure normalization                 = no
-set Surface pressure                       = 0 #50e6
 
-#### Parameters describing the model
+# Solver settings
+subsection Solver parameters
+  subsection Stokes solver parameters
+    set Linear solver tolerance = 1e-7
+    set Number of cheap Stokes solver steps = 0
+  end
+end
 
-# Model geometry (100x20 km, 1 km spacing)
+# Element types
+subsection Discretization
+  set Composition polynomial degree     = 2
+  set Stokes velocity polynomial degree = 2
+  set Temperature polynomial degree     = 1
+  subsection Stabilization parameters
+    set beta  = 0.2
+  end
+end
+
+# Model geometry (6x4 km, 0.1 km spacing)
 subsection Geometry model
   set Model name = box
 
   subsection Box
-    set X repetitions = 120
-    set Y repetitions = 90
+    set X repetitions = 60
+    set Y repetitions = 40
     set X extent      = 6e3
     set Y extent      = 4e3
   end
@@ -42,51 +51,32 @@ subsection Mesh refinement
   set Time steps between mesh refinement = 0
 end
 
-# Boundary classifications
-subsection Model settings
-  set Include adiabatic heating               = false
-  set Include shear heating                   = false
-  set Fixed temperature boundary indicators   = bottom, top
-  set Fixed composition boundary indicators   = #bottom
-  set Prescribed velocity boundary indicators = left x: function, right x:function#, bottom y:function
-  set Free surface boundary indicators        = #top
-  set Tangential velocity boundary indicators = top, bottom
-  set Free surface boundary indicators        = top
-  set Tangential velocity boundary indicators = bottom
-  set Include melt transport                  = true
+# Velocity on boundaries characterized by functions
+subsection Boundary velocity model
+  set Tangential velocity boundary indicators = bottom, top
+  set Prescribed velocity boundary indicators = left x: function, right x:function
+  subsection Function
+    set Variable names      = x,y
+    set Function constants  = m=0.00012, year=1
+    set Function constants  = m=0.0000946728, year=1
+    #set Function expression =  if (x<3e3 , -1*m/year, 1*m/year) ; 0.0
+    set Function expression = 0.; 0.;
+  end
 end
 
+# Melt settings
 subsection Melt settings
-  set Melt transport threshold                = 0.0 #1e-3
-  set Melt transport threshold                = 1e-3
+  set Include melt transport                  = true
   set Heat advection by melt                  = false
 end
 
-
+# Fluid pressure boundary condition
 subsection Boundary fluid pressure model
   set Plugin name = density
   subsection Density
     set Density formulation = average density
   end
 end
-
-# Advecting the free surface vertically rather than
-# in the surface normal direction can result in a
-# more stable mesh when the deformation is large
-subsection Free surface
-  set Surface velocity projection = vertical
-end
-
-# Velocity on boundaries characterized by functions
-subsection Boundary velocity model
-  subsection Function
-    set Variable names      = x,y
-    set Function constants  = m=0.00012, year=1
-    set Function constants  = m=0.0000946728, year=1
-    set Function expression =  if (x<3e3 , -1*m/year, 1*m/year) ; 0.0
-  end
-end
-
 
 # Number and name of compositional fields
 subsection Compositional fields
@@ -108,23 +98,21 @@ end
 
 # Composition boundary conditions
 subsection Boundary composition model
+  set Fixed composition boundary indicators   = left, right
   set Model name = initial composition
 end
 
 # Temperature boundary and initial conditions
 subsection Boundary temperature model
-  set Model name = box
-  subsection Box
-    set Bottom temperature = 273
-    set Left temperature   = 273
-    set Right temperature  = 273
-    set Top temperature    = 273
-  end
+  set Fixed temperature boundary indicators   = bottom, top, left, right
+  set Model name = initial temperature
 end
+
+# Temperature intial condition
 subsection Initial temperature model
   set Model name = function
   subsection Function
-    set Function expression = 273
+    set Function expression = 293
   end
 end
 
@@ -143,40 +131,27 @@ subsection Material model
   end
 
   subsection Melt visco plastic
-    set Depletion density change          = 0
+
+    set Reference strain rate = 1.e-14
+
+    set Minimum viscosity = 1.e19
+    set Maximum viscosity = 1.e23
+
+    set Angles of internal friction = 30.
+    set Cohesions = 40.e6
+
+    set Densities = 3000.
+
     set Reference permeability            = 1e-8
     set Reference bulk viscosity          = 2e19
     set Exponential melt weakening factor = 27
     set Reference melt viscosity          = 10
     set Melt density change               = -500
 
-    set Angles of internal friction = 30.
-    set Cohesions = 40.e6
-    set Use compositional field for viscosity averaging = 0 #!!
-    set Use linear viscosities = true
-  end
-
-  subsection Diffusion dislocation
-    set Reference temperature = 273
-    set Minimum strain rate = 1.e-20
-    set Minimum viscosity = 1e18
-    set Maximum viscosity = 1e26
-    set Reference viscosity = 1e22
-
-    set Thermal diffusivity = 1.e-6
-    set Heat capacity = 750.
-    set Densities = 3000
-    set Thermal expansivities = 0.
-
     set Viscosity averaging scheme = harmonic
 
-    set Prefactors for diffusion creep = 5.e-31
-    set Stress exponents for diffusion creep = 1.0
-    set Activation energies for diffusion creep = 0.
-    set Activation volumes for diffusion creep = 0.
-
-    set Prefactors for dislocation creep = 0.0
   end
+
 end
 
 # Gravity model
@@ -188,28 +163,21 @@ subsection Gravity model
   end
 end
 
-# Element types
-subsection Discretization
-  set Composition polynomial degree     = 1
-  set Stokes velocity polynomial degree = 2
-  set Temperature polynomial degree     = 1
-end
-
 # Post processing
 subsection Postprocess
   set List of postprocessors = velocity statistics, basic statistics, temperature statistics, visualization
   set Run postprocessors on nonlinear iterations = true
+
   subsection Visualization
-    set List of output variables = material properties, strain rate, melt material properties 
+    set List of output variables = density, viscosity, strain rate, melt fraction, melt material properties
 
-    subsection Material properties
-      set List of material properties = density, viscosity
-    end
 
+    #subsection Melt material properties
+    #  set List of properties = compaction viscosity,permeability,fluid density
+    #end
     subsection Melt material properties
-      set List of properties = compaction viscosity,permeability,fluid density
+      set List of properties = fluid density, permeability, fluid viscosity, compaction viscosity
     end
-
     set Time between graphical output = 0
     set Interpolate output = false
   end
