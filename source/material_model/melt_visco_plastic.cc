@@ -31,6 +31,8 @@ namespace aspect
   namespace MaterialModel
   {
 
+    using namespace dealii;
+
     namespace
     {
       std::vector<std::string> make_plastic_additional_outputs_names()
@@ -219,6 +221,8 @@ namespace aspect
                   }
             }
 
+          const double time_scale = this->convert_output_to_years() ? year_in_seconds : 1.0;
+
           // 3) Get porosity, melt density and update melt reaction terms
           for (unsigned int i=0; i<in.position.size(); ++i)
             {
@@ -245,19 +249,34 @@ namespace aspect
               // additional scaling factors on the right hand side apply
               for (unsigned int c=0; c<in.composition[i].size(); ++c)
                 {
-                  // fill reaction rate outputs
-                  if (reaction_rate_out != nullptr)
+                  if (use_melting_rate_function == false)
                     {
-                      if (c == peridotite_idx && this->get_timestep_number() > 0)
-                        reaction_rate_out->reaction_rates[i][c] = porosity_change / melting_time_scale
-                                                                  * (1 - maximum_melt_fraction) / (1 - old_porosity);
-                      else if (c == porosity_idx && this->get_timestep_number() > 0)
-                        reaction_rate_out->reaction_rates[i][c] = porosity_change / melting_time_scale;
-                      else
-                        reaction_rate_out->reaction_rates[i][c] = 0.0;
+                      // fill reaction rate outputs
+                      if (reaction_rate_out != nullptr)
+                        {
+                          if (c == peridotite_idx && this->get_timestep_number() > 0)
+                            reaction_rate_out->reaction_rates[i][c] = porosity_change / melting_time_scale
+                                                                      * (1 - maximum_melt_fraction) / (1 - old_porosity);
+                          else if (c == porosity_idx && this->get_timestep_number() > 0)
+                            reaction_rate_out->reaction_rates[i][c] = porosity_change / melting_time_scale;
+                          else
+                            reaction_rate_out->reaction_rates[i][c] = 0.0;
+                        }
+                 
+                      out.reaction_terms[i][c] = 0.0;
                     }
-                  out.reaction_terms[i][c] = 0.0;
-                }
+                 else
+                   {
+                     // Set reaction rates to 0
+                     if (reaction_rate_out != nullptr)
+                        reaction_rate_out->reaction_rates[i][c] = 0.;
+                     //
+                     if (c == porosity_idx)
+                       out.reaction_terms[i][c] = function.value(in.position[i]) / time_scale * out.densities[i];
+                     else if (c == peridotite_idx)
+                       out.reaction_terms[i][c] = 0.0;
+                   }
+               }
 
               // 4) Reduce shear viscosity due to melt presence
               const double porosity = std::min(1.0, std::max(in.composition[i][porosity_idx],0.0));
@@ -627,6 +646,17 @@ namespace aspect
                              "peridotite to be molten. "
                              "Units: non-dimensional.");
 
+          prm.declare_entry ("Use melting rate function", "false",
+                             Patterns::Bool (),
+                             "Prescribe the melting rate through a function defined as an input parameter. "
+                             "Units: None");
+
+          prm.enter_subsection("Melting rate function");
+          {
+            Functions::ParsedFunction<dim>::declare_parameters (prm, 1);
+          } 
+          prm.leave_subsection();
+
         }
         prm.leave_subsection();
       }
@@ -709,6 +739,27 @@ namespace aspect
           beta            = prm.get_double ("beta");
           M_cpx           = prm.get_double ("Mass fraction cpx");
 
+          use_melting_rate_function  = prm.get_bool ("Use melting rate function");
+
+          if (use_melting_rate_function)
+            {
+              prm.enter_subsection("Melting rate function");
+              try
+                {
+                  function.parse_parameters (prm);
+                }
+              catch (...)
+                {
+                  std::cerr << "ERROR: FunctionParser failed to parse\n"
+                            << "\t'Material model.Melting rate function.Function'\n"
+                            << "with expression\n"
+                            << "\t'" << prm.get("Function expression") << "'"
+                            << "More information about the cause of the parse error \n"
+                            << "is shown below.\n";
+                  throw;
+                }
+               prm.leave_subsection();
+            }
 
           AssertThrow(this->introspection().compositional_name_exists("peridotite"),
                       ExcMessage("Material model Melt visco plastic only works if there is a "

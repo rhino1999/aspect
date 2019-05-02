@@ -25,6 +25,8 @@
 #include <aspect/simulator_access.h>
 #include <aspect/postprocess/melt_statistics.h>
 #include <aspect/melt.h>
+#include <deal.II/base/function_lib.h>
+#include <deal.II/base/parsed_function.h>
 
 namespace aspect
 {
@@ -236,6 +238,16 @@ namespace aspect
                                    const bool plastic_yielding,
                                    const MaterialModel::MaterialModelInputs<dim> &in,
                                    MaterialModel::MaterialModelOutputs<dim> &out) const;
+
+        /**
+         * Whether to use a function defined as an input parameter for the melting rate
+         */
+        bool use_melting_rate_function;
+
+        /**
+         * A function object representing the melting rate.
+         */
+        Functions::ParsedFunction<dim> function;
 
     };
 
