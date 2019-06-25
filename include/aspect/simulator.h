@@ -1225,6 +1225,19 @@ namespace aspect
       void compute_reactions ();
 
       /**
+       * Update the indicated block of the solution vector with the
+       * corresponding block of the handed over @p distributed_vector. Also
+       * update reaction_vector with the corresponding block of @p
+       * distributed_reaction_vector.
+       *
+       * This function is implemented in
+       * <code>source/simulator/helper_functions.cc</code>.
+       */
+      void update_solution_vectors_with_reaction_results (const unsigned int block_index,
+                                                          const LinearAlgebra::BlockVector &distributed_vector,
+                                                          const LinearAlgebra::BlockVector &distributed_reaction_vector);
+
+      /**
        * Initialize the current linearization point vector from the old
        * solution vector(s). Depending on the time of the call this
        * can be simply a copy of the solution of the last timestep,
@@ -1235,7 +1248,6 @@ namespace aspect
        * <code>source/simulator/helper_functions.cc</code>.
        */
       void initialize_current_linearization_point ();
-
 
       /**
        * Interpolate material model outputs onto a compositional field. For the field
