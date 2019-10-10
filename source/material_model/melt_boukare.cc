@@ -553,6 +553,7 @@ namespace aspect
       MeltOutputs<dim> *melt_out = out.template get_additional_output<MeltOutputs<dim> >();
       BoukareOutputs<dim> *boukare_out = out.template get_additional_output<BoukareOutputs<dim> >();
       EnthalpyOutputs<dim> *enthalpy_out = out.template get_additional_output<EnthalpyOutputs<dim> >();
+      PrescribedFieldOutputs<dim> *prescribed_field_out = out.template get_additional_output<PrescribedFieldOutputs<dim> >();
 
       // If the temperature or pressure are zero, this model does not work.
       // This should only happen when setting the melt constraints before we have the initial temperature.
@@ -722,6 +723,7 @@ namespace aspect
           if (this->include_melt_transport())
             {
               // Calculate the melting rate
+        	  const unsigned int bulk_index = this->introspection().compositional_index_for_name("projected_bulk_composition");
               const unsigned int Fe_solid_idx = this->introspection().compositional_index_for_name("molar_Fe_in_solid");
               const unsigned int Fe_melt_idx = this->introspection().compositional_index_for_name("molar_Fe_in_melt");
               const unsigned int porosity_idx = this->introspection().compositional_index_for_name("porosity");
@@ -734,7 +736,10 @@ namespace aspect
 
               // in this simple model, the bulk composition is just one number, namely
               // the molar fraction of the combined iron endmembers
-              const double bulk_composition = old_melt_composition * melt_molar_fraction + old_solid_composition * solid_molar_fraction;
+              if (prescribed_field_out != nullptr)
+                prescribed_field_out->prescribed_field_outputs[q][bulk_index] = old_melt_composition * melt_molar_fraction + old_solid_composition * solid_molar_fraction;
+
+              const double bulk_composition = in.composition[q][bulk_index];
 
               if (boukare_out != nullptr)
                 boukare_out->bulk_composition[q] = bulk_composition;
@@ -1221,6 +1226,13 @@ namespace aspect
           const unsigned int n_points = out.viscosities.size();
           out.additional_outputs.push_back(
             std_cxx14::make_unique<MaterialModel::BoukareOutputs<dim>> (n_points));
+        }
+
+      if (out.template get_additional_output<PrescribedFieldOutputs<dim> >() == NULL)
+        {
+          const unsigned int n_points = out.viscosities.size();
+          out.additional_outputs.push_back(
+            std_cxx14::make_unique<MaterialModel::PrescribedFieldOutputs<dim>> (n_points, this->n_compositional_fields()));
         }
     }
   }
