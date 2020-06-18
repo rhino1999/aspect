@@ -1,21 +1,32 @@
-# A simple setup for convection in a quarter of a 2d shell. See the
-# manual for more information.
+# A simple setup for convection in a 2d shell.
+# This model was used to generate ASPECT's logo, which can
+# be recreated using the ASPECT version and dependencies
+# specified below, and using the paraview state file
+# and output file in output/ and ParaView version 5.6.1.
 
+#-----------------------------------------------------------------------------
+#-- This is ASPECT, the Advanced Solver for Problems in Earth's ConvecTion.
+#--     . version 2.2.0-pre (master, 148bb56fe)
+#--     . using deal.II 9.0.0
+#--     .       with 32 bit indices and vectorization level 1 (128 bits)
+#--     . using Trilinos 12.10.1
+#--     . using p4est 2.0.0
+#--     . running in OPTIMIZED mode
+#--     . running with 6 MPI processes
+#-----------------------------------------------------------------------------
 
 set Dimension                              = 2
 set Use years in output instead of seconds = true
-set End time                               = 4.5e9
-set Output directory                       = output-logo-6
-set Use conduction timestep                = true #2e6
-
+set End time                               = 650.247e6
+set Output directory                       = output-logo
+set Use conduction timestep                = true
 
 subsection Material model
   set Model name = simple
-  set Material averaging = harmonic average only viscosity
 
   subsection Simple model
     set Thermal expansion coefficient = 4e-5
-    set Viscosity                     = 1e22
+    set Viscosity                     = 2e22
   end
 end
 
@@ -42,20 +53,16 @@ subsection Boundary temperature model
 
   subsection Constant
     set Boundary indicator to temperature mappings = \
-      top: 273, \
-      bottom: 4273
+      top: 273, bottom: 4273
   end
 end
 
 
 subsection Initial temperature model
-  set Model name = harmonic perturbation
+  set Model name = function
 
-  subsection Harmonic perturbation
-    set Lateral wave number one = 8
-    set Vertical wave number = 1
-    set Magnitude = 0.0
-    set Reference temperature = 1973
+  subsection Function
+    set Function expression = 1973
   end
 end
 
@@ -71,19 +78,22 @@ end
 
 
 subsection Mesh refinement
-  set Initial global refinement          = 6
-  set Initial adaptive refinement        = 0
-  set Refinement fraction                = 0.5
+  set Initial global refinement          = 4
+  set Initial adaptive refinement        = 2
+  set Refinement fraction                = 0.6
   set Strategy                           = temperature
   set Time steps between mesh refinement = 3
+  set Minimum refinement level = 3
 end
 
 
+# We increase the solver tolerance to speed things up
 subsection Solver parameters
   subsection Stokes solver parameters
-    set Stokes solver type = block GMG
+     set Linear solver tolerance = 1e-3
   end
 end
+
 
 subsection Postprocess
   set List of postprocessors = visualization, temperature statistics, velocity statistics
@@ -94,4 +104,3 @@ subsection Postprocess
     set Number of grouped files       = 1
   end
 end
-
