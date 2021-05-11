@@ -315,6 +315,7 @@ namespace aspect
         double min_eta;
         double max_eta;
         double max_lateral_eta_variation;
+        double ppv_viscosity_prefactor;
 
         /**
          * Information about the location of data files.

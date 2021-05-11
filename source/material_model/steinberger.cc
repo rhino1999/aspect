@@ -257,8 +257,8 @@ namespace aspect
     double
     Steinberger<dim>::
     viscosity (const double temperature,
-               const double /*pressure*/,
-               const std::vector<double> &,
+               const double pressure,
+               const std::vector<double> &volume_fractions,
                const SymmetricTensor<2,dim> &,
                const Point<dim> &position) const
     {
@@ -276,8 +276,17 @@ namespace aspect
 
       // For an explanation on this formula see the Steinberger & Calderwood 2006 paper
       const double vis_lateral_exp = -1.0*lateral_viscosity_lookup->lateral_viscosity(depth)*delta_temperature/(temperature*adiabatic_temperature);
+
+      double vis_lateral = std::exp(vis_lateral_exp);
+      if (material_lookup[0]->has_dominant_phase())
+        {
+          unsigned int index = distance(volume_fractions.begin(), max_element(volume_fractions.begin(), volume_fractions.end()));
+          if (material_lookup[index]->dominant_phase(temperature,pressure) == "ppv")
+            vis_lateral *= ppv_viscosity_prefactor;
+        }
+
       // Limit the lateral viscosity variation to a reasonable interval
-      const double vis_lateral = std::max(std::min(std::exp(vis_lateral_exp),max_lateral_eta_variation),1/max_lateral_eta_variation);
+      vis_lateral = std::max(std::min(vis_lateral,max_lateral_eta_variation),1/max_lateral_eta_variation);
 
       const double vis_radial = radial_viscosity_lookup->radial_viscosity(depth);
 
@@ -523,7 +532,7 @@ namespace aspect
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
           if (in.requests_property(MaterialProperties::viscosity))
-            out.viscosities[i] = viscosity(in.temperature[i], in.pressure[i], in.composition[i], in.strain_rate[i], in.position[i]);
+            out.viscosities[i] = viscosity(in.temperature[i], in.pressure[i], volume_fractions[i], in.strain_rate[i], in.position[i]);
 
           out.thermal_conductivities[i] = thermal_conductivity_value;
           out.entropy_derivative_pressure[i]    = 0;
@@ -729,6 +738,11 @@ namespace aspect
                              Patterns::Double (0.),
                              "The value of the thermal conductivity $k$. "
                              "Units: \\si{\\watt\\per\\meter\\per\\kelvin}.");
+          prm.declare_entry ("Post-perovskite viscosity prefactor", "1.0",
+                             Patterns::Double (0.),
+                             "The factor the viscosity should be multiplied by "
+                             "if the material look-up indicates post-perovskite "
+                             "is the dominant phase. ");
           prm.leave_subsection();
         }
         prm.leave_subsection();
@@ -759,6 +773,7 @@ namespace aspect
           max_eta              = prm.get_double ("Maximum viscosity");
           max_lateral_eta_variation    = prm.get_double ("Maximum lateral viscosity variation");
           thermal_conductivity_value = prm.get_double ("Thermal conductivity");
+          ppv_viscosity_prefactor = prm.get_double ("Post-perovskite viscosity prefactor");
 
           prm.leave_subsection();
         }
