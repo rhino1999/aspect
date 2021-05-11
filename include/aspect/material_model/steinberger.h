@@ -109,6 +109,24 @@ namespace aspect
       };
     }
 
+
+    /**
+     * Additional output fields for the phase with the largest fraction
+     * to be added to the MaterialModel::MaterialModelOutputs structure
+     * and filled in the MaterialModel::Steinberger::evaluate() function.
+     */
+    template <int dim>
+    class PhaseOutputs : public NamedAdditionalMaterialOutputs<dim>
+    {
+      public:
+        PhaseOutputs(const unsigned int n_points);
+
+        std::vector<double> get_nth_output(const unsigned int idx) const override;
+
+        int get_phase_index_from_str(const std::string phase_name) const;
+    };
+
+
     /**
      * A variable viscosity material model that reads the essential values of
      * coefficients from tables in input files.
@@ -171,6 +189,21 @@ namespace aspect
         void fill_phase_volume_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
                                           const std::vector<std::vector<double>> &volume_fractions,
                                           NamedAdditionalMaterialOutputs<dim> *phase_volume_fractions_out) const;
+
+        /**
+        * This function uses the MaterialModelInputs &in to fill the output_values
+        * of the dominant_phases_out output object with the index of the
+        * dominant phase at each of the evaluation points.
+        * The phases are obtained from the PerpleX-derived
+        * pressure-temperature lookup tables.
+        * The filled output_values object is a vector of vector<double>;
+        * the outer vector is expected to have a size of 1, the inner vector is
+        * expected to have a size that equals the number of evaluation points.
+        */
+        void fill_dominant_phases (const MaterialModel::MaterialModelInputs<dim> &in,
+                                   const std::vector<std::vector<double>> &volume_fractions,
+                                   PhaseOutputs<dim> *dominant_phases_out) const;
+
 
         /**
          * Returns the cell-wise averaged enthalpy derivatives for the evaluate

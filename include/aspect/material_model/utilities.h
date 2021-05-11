@@ -119,6 +119,17 @@ namespace aspect
                     const double pressure) const;
 
             /**
+             * Returns a string that indicates the phase with the largest volume
+             * fraction at a given temperature and pressure.
+             */
+            std::string
+            dominant_phase (const double temperature,
+                            const double pressure) const;
+
+            bool
+            has_dominant_phase() const;
+
+            /**
              * Returns a vector of all the column names in the lookup file
              * that start with the character string vol_fraction_
              */
@@ -156,6 +167,16 @@ namespace aspect
                    const bool interpol) const;
 
             /**
+             * Access that data value of the property that is stored in table
+             * @p values at pressure @p pressure and temperature @p temperature
+             * using the closest point value.
+             */
+            std::string
+            value (const double temperature,
+                   const double pressure,
+                   const Table<2, std::string> &values) const;
+
+            /**
              * Find the position in a data table given a temperature.
              */
             double get_nT(const double temperature) const;
@@ -171,6 +192,7 @@ namespace aspect
             dealii::Table<2,double> vp_values;
             dealii::Table<2,double> vs_values;
             dealii::Table<2,double> enthalpy_values;
+            dealii::Table<2,std::string> dominant_phase_values;
 
             /**
             * The vector of column names corresponding to each phase,
@@ -192,6 +214,7 @@ namespace aspect
             unsigned int n_phases;
             unsigned int n_columns;
             bool interpolation;
+            bool has_dominant_phase_column;
         };
 
         /**

@@ -128,6 +128,51 @@ namespace aspect
 
 
 
+    namespace
+    {
+      std::vector<std::string> make_phase_outputs_names()
+      {
+        std::vector<std::string> names;
+        names.emplace_back("phase");
+        return names;
+      }
+    }
+
+
+
+    template <int dim>
+    PhaseOutputs<dim>::PhaseOutputs (const unsigned int n_points)
+      :
+      NamedAdditionalMaterialOutputs<dim>(make_phase_outputs_names(), n_points)
+    {}
+
+
+
+    template <int dim>
+    std::vector<double>
+    PhaseOutputs<dim>::get_nth_output(const unsigned int idx) const
+    {
+      AssertIndexRange (idx, 1);
+      return this->output_values[idx];
+    }
+
+
+
+    template <int dim>
+    int
+    PhaseOutputs<dim>::get_phase_index_from_str(const std::string phase_name) const
+    {
+      // TODO: this vector could be part of input file, or could be generated upon initialization
+      std::vector<std::string> phases  = {"ol", "wa", "ri", "gt", "pv", "mw", "ppv"};
+      std::vector<std::string>::iterator it = std::find(phases.begin(), phases.end(), phase_name);
+      if (it != phases.end())
+        return std::distance(phases.begin(), it);
+      else
+        return -1.0;
+    }
+
+
+
     template <int dim>
     void
     Steinberger<dim>::initialize()
@@ -383,6 +428,35 @@ namespace aspect
 
 
     template <int dim>
+    void
+    Steinberger<dim>::
+    fill_dominant_phases (const MaterialModel::MaterialModelInputs<dim> &in,
+                          const std::vector<std::vector<double>> &volume_fractions,
+                          PhaseOutputs<dim> *dominant_phases_out) const
+    {
+      Assert(material_lookup[0]->has_dominant_phase(),
+             ExcMessage("You are trying to fill in outputs for the dominant phase, "
+                        "but these values do not exist in the material lookup."));
+
+      // Each call to material_lookup[j]->dominant_phase(temperature,pressure)
+      // returns the phase with the largest volume fraction in that material lookup
+      // at the requested temperature and pressure.
+      // In the following function,
+      // the index i corresponds to the ith evaluation point
+      // the index j corresponds to the jth compositional field
+      std::vector<std::vector<double> > dominant_phase_indices(1, std::vector<double>(in.n_evaluation_points(),
+                                                                                      std::numeric_limits<double>::quiet_NaN()));
+      for (unsigned int i = 0; i < in.n_evaluation_points(); ++i)
+        {
+          unsigned int index = distance(volume_fractions[i].begin(), max_element(volume_fractions[i].begin(), volume_fractions[i].end()));
+          dominant_phase_indices[0][i] = dominant_phases_out->get_phase_index_from_str(material_lookup[index]->dominant_phase(in.temperature[i],in.pressure[i]));
+        }
+      dominant_phases_out->output_values = dominant_phase_indices;
+    }
+
+
+
+    template <int dim>
     bool
     Steinberger<dim>::
     is_compressible () const
@@ -552,6 +626,9 @@ namespace aspect
       // fill phase volume outputs if they exist
       if (NamedAdditionalMaterialOutputs<dim> *phase_volume_fractions_out = out.template get_additional_output<NamedAdditionalMaterialOutputs<dim> >())
         fill_phase_volume_fractions(in, volume_fractions, phase_volume_fractions_out);
+
+      if (PhaseOutputs<dim> *dominant_phases_out = out.template get_additional_output<PhaseOutputs<dim> >())
+        fill_dominant_phases(in, volume_fractions, dominant_phases_out);
     }
 
 
@@ -732,6 +809,14 @@ namespace aspect
           const unsigned int n_points = out.n_evaluation_points();
           out.additional_outputs.push_back(
             std_cxx14::make_unique<MaterialModel::NamedAdditionalMaterialOutputs<dim>> (unique_phase_names, n_points));
+        }
+
+      if (out.template get_additional_output<PhaseOutputs<dim> >() == nullptr
+          && material_lookup[0]->has_dominant_phase())
+        {
+          const unsigned int n_points = out.n_evaluation_points();
+          out.additional_outputs.push_back(
+            std_cxx14::make_unique<MaterialModel::PhaseOutputs<dim>> (n_points));
         }
 
       if (out.template get_additional_output<SeismicAdditionalOutputs<dim> >() == nullptr)
