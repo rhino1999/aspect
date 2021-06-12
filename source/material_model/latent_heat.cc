@@ -85,14 +85,9 @@ namespace aspect
           {
             // first, calculate temperature dependence of density
             double density_temperature_dependence = 1.0;
-            if (this->include_adiabatic_heating ())
-              {
-                // temperature dependence is 1 - alpha * (T - T(adiabatic))
-                density_temperature_dependence -= (temperature - this->get_adiabatic_conditions().temperature(position))
+            // temperature dependence is 1 - alpha * (T - T(adiabatic))
+            density_temperature_dependence -= (temperature - this->get_adiabatic_conditions().temperature(position))
                                                   * thermal_alpha;
-              }
-            else
-              density_temperature_dependence -= temperature * thermal_alpha;
 
             // second, calculate composition dependence of density
             // constant density difference between peridotite and eclogite
@@ -120,7 +115,7 @@ namespace aspect
                 const double depth = this->get_geometry_model().depth(position);
                 const double pressure_depth_derivative = (depth > 0.0)
                                                          ?
-                                                         pressure / depth
+                                                         this->get_adiabatic_conditions().pressure(position) / depth
                                                          :
                                                          this->get_gravity_model().gravity_vector(in.position[i]).norm() * reference_rho;
 
@@ -157,8 +152,9 @@ namespace aspect
             const double pressure_dependence = reference_rho * kappa * (pressure - this->get_surface_pressure());
 
             // in the end, all the influences are added up
-            out.densities[i] = (reference_rho + density_composition_dependence + pressure_dependence + phase_dependence)
-                               * density_temperature_dependence;
+            // out.densities[i] = (reference_rho + density_composition_dependence + pressure_dependence + phase_dependence)
+            //                   * density_temperature_dependence;
+	    out.densities[i] = reference_rho * density_temperature_dependence + phase_dependence;
             out.viscosities[i] = std::max(min_viscosity, std::min(max_viscosity, out.viscosities[i] * viscosity_phase_dependence));
           }
 
