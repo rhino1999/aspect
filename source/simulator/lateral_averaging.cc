@@ -712,6 +712,13 @@ namespace aspect
     return values;
   }
 
+  template <int dim>
+  void LateralAveraging<dim>::get_density_averages(std::vector<double> &values) const
+  {
+    values = compute_lateral_averages(values.size(),
+                                      std::vector<std::string>(1,"adiabatic_density"))[0];
+  }
+
 
 
   template <int dim>
