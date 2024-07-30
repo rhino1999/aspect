@@ -466,7 +466,24 @@ namespace aspect
         std::vector<double> field_values;
     };
   }
+template <int dim>
+    class FunctorDepthAverageDensity: public internal::FunctorBase<dim>
+    {
+      public:
+        bool need_material_properties() const override
+        {
+          return true;
+        }
 
+        void operator()(const MaterialModel::MaterialModelInputs<dim> &,
+                        const MaterialModel::MaterialModelOutputs<dim> &out,
+                        const FEValues<dim> &,
+                        const LinearAlgebra::BlockVector &,
+                        std::vector<double> &output) override
+        {
+          output = out.densities;
+        }
+    };
   namespace internal
   {
     template <int dim>
@@ -716,7 +733,7 @@ namespace aspect
   void LateralAveraging<dim>::get_density_averages(std::vector<double> &values) const
   {
     values = compute_lateral_averages(values.size(),
-                                      std::vector<std::string>(1,"adiabatic_density"))[0];
+                                      std::vector<std::string>(1,"density"))[0];
   }
 
 
@@ -859,6 +876,10 @@ namespace aspect
           {
             functors.push_back(std::make_unique<FunctorDepthAverageField<dim>>
                                (this->introspection().extractors.temperature));
+          }
+        else if (property_name == "density")
+          {
+            functors.push_back(std::make_unique<FunctorDepthAverageDensity<dim>>());
           }
         else if (this->introspection().compositional_name_exists(property_name))
           {

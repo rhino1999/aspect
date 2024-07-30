@@ -84,6 +84,15 @@ namespace aspect
                                                      this->n_compositional_fields());
 
         this->get_material_model().evaluate(in, out);
+        if (this->get_parameters().material_averaging != MaterialModel::MaterialAveraging::AveragingOperation::project_to_Q1
+            &&
+            this->get_parameters().material_averaging != MaterialModel::MaterialAveraging::AveragingOperation::project_to_Q1_only_viscosity)
+          MaterialModel::MaterialAveraging::average (this->get_parameters().material_averaging,
+                                                     input_data.template get_cell<dim>(),
+                                                     Quadrature<dim>(),
+                                                     this->get_mapping(),
+                                                     in.requested_properties,
+                                                     out);
 
         for (unsigned int q=0; q<n_quadrature_points; ++q)
           {
@@ -103,7 +112,7 @@ namespace aspect
 
       template <int dim>
       void
-      TemperatureAnomaly<dim>::declare_parameters (ParameterHandler &prm)
+      DensityAnomaly<dim>::declare_parameters (ParameterHandler &prm)
       {
         prm.enter_subsection("Postprocess");
         {
@@ -128,7 +137,7 @@ namespace aspect
 
       template <int dim>
       void
-      TemperatureAnomaly<dim>::parse_parameters(ParameterHandler &prm)
+      DensityAnomaly<dim>::parse_parameters(ParameterHandler &prm)
       {
         prm.enter_subsection("Postprocess");
         {
@@ -156,13 +165,13 @@ namespace aspect
   {
     namespace VisualizationPostprocessors
     {
-      ASPECT_REGISTER_VISUALIZATION_POSTPROCESSOR(TemperatureAnomaly,
-                                                  "temperature anomaly",
+      ASPECT_REGISTER_VISUALIZATION_POSTPROCESSOR(DensityAnomaly,
+                                                  "density anomaly",
                                                   "A visualization output postprocessor that outputs the temperature minus the depth-average of the temperature."
                                                   "The average temperature is calculated using the lateral averaging function from the ``depth average'' "
                                                   "postprocessor and interpolated linearly between the layers specified through ``Number of depth slices''."
                                                   "\n\n"
-                                                  "Physical units: \\si{\\kelvin}.")
+                                                  "Physical units: \\si{\\kg/m^3}.")
     }
   }
 }
