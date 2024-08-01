@@ -143,7 +143,7 @@ namespace aspect
         {
           prm.enter_subsection("Visualization");
           {
-            prm.enter_subsection("density_anomaly");
+            prm.enter_subsection("Density anomaly");
             {
               n_slices = prm.get_integer("Number of depth slices");
             }
