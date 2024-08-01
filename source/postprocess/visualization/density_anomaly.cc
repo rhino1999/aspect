@@ -118,12 +118,12 @@ namespace aspect
         {
           prm.enter_subsection("Visualization");
           {
-            prm.enter_subsection("density_anomaly");
+            prm.enter_subsection("Density anomaly");
             {
               prm.declare_entry ("Number of depth slices","20",
                                  Patterns::Integer (1),
                                  "Number of depth slices used to define "
-                                 "average temperature.");
+                                 "average density.");
 
             }
             prm.leave_subsection();
