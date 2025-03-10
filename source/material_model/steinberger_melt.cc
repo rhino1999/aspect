@@ -24,12 +24,12 @@
 #include <aspect/adiabatic_conditions/interface.h>
 #include <aspect/utilities.h>
 #include <aspect/lateral_averaging.h>
+#include <aspect/material_model/reaction_model/katz2003_mantle_melting.h>
 
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/base/table.h>
 #include <memory>
-
 
 namespace aspect
 {
@@ -129,7 +129,93 @@ namespace aspect
 
     template <int dim>
     void
-    Steinberger<dim>::initialize()
+    SteinbergerMelt<dim>::
+    melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
+                    std::vector<double> &melt_fractions) const
+    {
+      const unsigned int peridotite_depletion_index = this->introspection().compositional_index_for_name("peridotite depletion");
+      const unsigned int pyroxenite_depletion_index = this->introspection().compositional_index_for_name("pyroxenite depletion");
+      const unsigned int pyroxenite_index = this->introspection().compositional_index_for_name("pyroxenite");
+
+      for (unsigned int q=0; q<in.n_evaluation_points(); ++q)
+        {
+          const double pressure    = this->get_adiabatic_conditions().pressure(in.position[q]);
+          const double temperature = in.temperature[q];
+          std::vector<double> composition(this->n_compositional_fields());
+
+          for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
+            composition[c] = in.composition[q][this->introspection().component_indices.compositional_fields[c]];
+
+          // anhydrous melting of peridotite after Katz, 2003
+          const double T_solidus  = A1 + 273.15
+                                    + A2 * pressure
+                                    + A3 * pressure * pressure;
+          const double T_lherz_liquidus = B1 + 273.15
+                                          + B2 * pressure
+                                          + B3 * pressure * pressure;
+          const double T_liquidus = C1 + 273.15
+                                    + C2 * pressure
+                                    + C3 * pressure * pressure;
+
+          // melt fraction for peridotite with clinopyroxene
+          double peridotite_melt_fraction;
+          if (temperature < T_solidus || pressure > 1.3e10)
+            peridotite_melt_fraction = 0.0;
+          else if (temperature > T_lherz_liquidus)
+            peridotite_melt_fraction = 1.0;
+          else
+            peridotite_melt_fraction = std::pow((temperature - T_solidus) / (T_lherz_liquidus - T_solidus),beta);
+
+          // melt fraction after melting of all clinopyroxene
+          const double R_cpx = r1 + r2 * std::max(0.0, pressure);
+          const double F_max = M_cpx / R_cpx;
+
+          if (peridotite_melt_fraction > F_max && temperature < T_liquidus)
+            {
+              const double T_max = std::pow(F_max,1/beta) * (T_lherz_liquidus - T_solidus) + T_solidus;
+              peridotite_melt_fraction = F_max + (1 - F_max) * std::pow((temperature - T_max) / (T_liquidus - T_max),beta);
+            }
+
+          // melting of pyroxenite after Sobolev et al., 2011
+          const double T_melting = D1 + 273.15
+                                    + D2 * pressure
+                                    + D3 * pressure * pressure;
+
+          const double discriminant = E1*E1/(E2*E2*4) + (temperature-T_melting)/E2;
+
+          double pyroxenite_melt_fraction;
+          if (temperature < T_melting || pressure > 1.3e10)
+            pyroxenite_melt_fraction = 0.0;
+          else if (discriminant < 0)
+            pyroxenite_melt_fraction = 0.5429;
+          else
+            pyroxenite_melt_fraction = -E1/(2*E2) - std::sqrt(discriminant);
+
+          double melt_fraction;
+          if (this->introspection().compositional_name_exists("pyroxenite"))
+            {
+              melt_fraction = composition[pyroxenite_index] * pyroxenite_melt_fraction +
+                              (1-composition[pyroxenite_index]) * peridotite_melt_fraction;
+            }
+          else
+            melt_fraction = peridotite_melt_fraction;
+
+          melt_fractions[q] = melt_fraction;
+          out.reaction_terms[q][pyroxenite_index] = 0.0
+          out.reaction_terms[q][1] = 0.0
+          out.reaction_terms[q][0] = 0.0
+          out.reaction_terms[q][pyroxenite_depletion_index] = pyroxenite_melt_fraction
+          out.reaction_terms[q][peridotite_depletion_index] = peridotite_melt_fraction
+
+        // melt_fractions[q] = katz2003_model.melt_fraction(in.temperature[q],
+                                                        //  this->get_adiabatic_conditions().pressure(in.position[q]));
+        }
+    }
+
+
+    template <int dim>
+    void
+    SteinbergerMelt<dim>::initialize()
     {
       equation_of_state.initialize();
 
@@ -146,7 +232,7 @@ namespace aspect
 
     template <int dim>
     void
-    Steinberger<dim>::
+    SteinbergerMelt<dim>::
     update()
     {
       if (use_lateral_average_temperature)
@@ -167,7 +253,7 @@ namespace aspect
 
     template <int dim>
     double
-    Steinberger<dim>::
+    SteinbergerMelt<dim>::
     viscosity (const double temperature,
                const double /*pressure*/,
                const std::vector<double> &volume_fractions,
@@ -208,7 +294,7 @@ namespace aspect
 
     template <int dim>
     bool
-    Steinberger<dim>::
+    SteinbergerMelt<dim>::
     is_compressible () const
     {
       return equation_of_state.is_compressible();
@@ -218,7 +304,7 @@ namespace aspect
 
     template <int dim>
     double
-    Steinberger<dim>::
+    SteinbergerMelt<dim>::
     thermal_conductivity (const double temperature,
                           const double pressure,
                           const Point<dim> &position) const
@@ -262,7 +348,7 @@ namespace aspect
 
     template <int dim>
     void
-    Steinberger<dim>::evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
+    SteinbergerMelt<dim>::evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                                MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       std::vector<EquationOfStateOutputs<dim>> eos_outputs (in.n_evaluation_points(), equation_of_state.number_of_lookups());
@@ -279,9 +365,46 @@ namespace aspect
 
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
+          const double pressure    = eos_in.pressure[i]
+          const double temperature = in.temperature[i];
+          std::vector<double> composition(in.composition[i].size());
+
           out.thermal_conductivities[i] = thermal_conductivity(in.temperature[i], in.pressure[i], in.position[i]);
-          for (unsigned int c=0; c<in.composition[i].size(); ++c)
-            out.reaction_terms[i][c] = 0;
+          // compute melt fraction
+          const unsigned int pyrolite_depletion_index = this->introspection().compositional_index_for_name("pyrolite depletion");
+          const unsigned int pyroxenite_depletion_index = this->introspection().compositional_index_for_name("pyroxenite depletion");
+          const unsigned int pyroxenite_index = this->introspection().compositional_index_for_name("pyroxenite");
+          const double old_pyrolite_depletion = in.composition[i][pyrolite_depletion_index];
+          const double old_pyroxenite_depletion = in.composition[i][pyroxenite_depletion_index];
+          double pyrolite_melt_fraction = katz2003_model.melt_fraction(temperature, pressure);
+          
+          if (temperature < T_melting || pressure > 1.3e10)
+            pyroxenite_melt_fraction = 0.0;
+          else if (discriminant < 0)
+            pyroxenite_melt_fraction = 0.5429;
+          else
+            pyroxenite_melt_fraction = -E1/(2*E2) - std::sqrt(discriminant);
+
+          if (pyrolite_melt_fraction > old_pyrolite_depletion)
+            {
+              pyrolite_melt_fraction_change = pyrolite_melt_fraction - old_pyrolite_depletion;
+            }
+          else
+            pyrolite_melt_fraction_change = 0.0;
+
+          if (pyroxenite_melt_fraction > old_pyroxenite_depletion)
+            {
+              pyroxenite_melt_fraction_change = pyroxenite_melt_fraction - old_pyroxenite_depletion;
+            }
+          else
+            pyroxenite_melt_fraction_change = 0.0;
+
+          out.reaction_terms[i][pyroxenite_index] = -pyroxenite_melt_fraction_change;
+          out.reaction_terms[i][0] = -pyrolite_melt_fraction_change;
+          out.reaction_terms[i][pyroxenite_depletion_index] = pyroxenite_melt_fraction_change;
+          out.reaction_terms[i][pyrolite_depletion_index] = pyrolite_melt_fraction_change;
+          // for (unsigned int c=0; c<in.composition[i].size(); ++c)
+          //   out.reaction_terms[i][c] = 0;
 
           // Calculate volume fractions from mass fractions
           // If there is only one lookup table, set the mass and volume fractions to 1
@@ -321,7 +444,7 @@ namespace aspect
 
     template <int dim>
     void
-    Steinberger<dim>::
+    SteinbergerMelt<dim>::
     fill_prescribed_outputs(const unsigned int q,
                             const std::vector<double> &,
                             const MaterialModel::MaterialModelInputs<dim> &,
@@ -342,7 +465,7 @@ namespace aspect
 
     template <int dim>
     void
-    Steinberger<dim>::declare_parameters (ParameterHandler &prm)
+    SteinbergerMelt<dim>::declare_parameters (ParameterHandler &prm)
     {
       prm.enter_subsection("Material model");
       {
@@ -479,7 +602,7 @@ namespace aspect
 
     template <int dim>
     void
-    Steinberger<dim>::parse_parameters (ParameterHandler &prm)
+    SteinbergerMelt<dim>::parse_parameters (ParameterHandler &prm)
     {
       prm.enter_subsection("Material model");
       {
@@ -592,7 +715,7 @@ namespace aspect
 
     template <int dim>
     void
-    Steinberger<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
+    SteinbergerMelt<dim>::create_additional_named_outputs (MaterialModel::MaterialModelOutputs<dim> &out) const
     {
       equation_of_state.create_additional_named_outputs(out);
 
@@ -614,8 +737,8 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    ASPECT_REGISTER_MATERIAL_MODEL(Steinberger,
-                                   "Steinberger",
+    ASPECT_REGISTER_MATERIAL_MODEL(Steinberger melt,
+                                   "Steinberger melt",
                                    "This material model looks up the viscosity from the tables that "
                                    "correspond to the paper of Steinberger and Calderwood "
                                    "2006 (``Models of large-scale viscous flow in the Earth's "

@@ -23,8 +23,6 @@
 
 #include <aspect/material_model/interface.h>
 #include <aspect/material_model/equation_of_state/thermodynamic_table_lookup.h>
-#include <aspect/postprocess/melt_statistics.h>
-#include <aspect/melt.h>
 #include <aspect/material_model/reaction_model/katz2003_mantle_melting.h>
 
 #include <aspect/simulator_access.h>
@@ -127,7 +125,7 @@ namespace aspect
      * @ingroup MaterialModels
      */
     template <int dim>
-    class Steinberger: public MaterialModel::Interface<dim>,
+    class SteinbergerMelt: public MaterialModel::Interface<dim>,
       public MaterialModel::MeltFractionModel<dim>,
       public ::aspect::SimulatorAccess<dim> 
     {
@@ -183,6 +181,10 @@ namespace aspect
         void
         evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                  MaterialModel::MaterialModelOutputs<dim> &out) const override;
+
+        void 
+        melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
+                        std::vector<double> &melt_fractions) const override;         
 
         /**
          * @name Functions used in dealing with run-time parameters
@@ -333,6 +335,45 @@ namespace aspect
                                       const MaterialModel::MaterialModelInputs<dim> &in,
                                       MaterialModel::MaterialModelOutputs<dim> &out) const;
 
+        // /**
+        //  * Parameters for anhydrous melting of peridotite after Katz, 2003
+        //  */
+
+        // // for the solidus temperature
+        // double A1;   // °C
+        // double A2; // °C/Pa
+        // double A3; // °C/(Pa^2)
+
+        // // for the lherzolite liquidus temperature
+        // double B1;   // °C
+        // double B2;   // °C/Pa
+        // double B3; // °C/(Pa^2)
+
+        // // for the liquidus temperature
+        // double C1;   // °C
+        // double C2;  // °C/Pa
+        // double C3; // °C/(Pa^2)
+
+        // // for the reaction coefficient of pyroxene
+        // double r1;     // cpx/melt
+        // double r2;     // cpx/melt/GPa
+        // double M_cpx;  // mass fraction of pyroxenite
+
+        // // melt fraction exponent
+        // double beta;
+
+        /**
+         * Parameters for melting of pyroxenite after Sobolev et al., 2011
+         */
+
+        // for the melting temperature
+        double D1;    // °C
+        double D2;  // °C/Pa
+        double D3; // °C/(Pa^2)
+
+        // for the melt-fraction dependence of productivity
+        double E1;
+        double E2;
     };
   }
 }
