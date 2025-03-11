@@ -24,6 +24,7 @@
 #include <aspect/material_model/interface.h>
 #include <aspect/material_model/equation_of_state/thermodynamic_table_lookup.h>
 #include <aspect/material_model/reaction_model/katz2003_mantle_melting.h>
+#include <aspect/material_model/steinberger.h>
 
 #include <aspect/simulator_access.h>
 #include <deal.II/fe/component_mask.h>
@@ -34,83 +35,83 @@ namespace aspect
   {
     using namespace dealii;
 
-    namespace internal
-    {
-      /**
-       * A class that reads in a text file that contains the
-       * temperature-dependency of viscosity for a set of equidistant depth
-       * layers. See
-       * the data/material-model/steinberger directory for an example data
-       * file.
-       * The class can return the value for a given depth.
-       */
-      class LateralViscosityLookup
-      {
-        public:
-          /**
-           * Read in a file.
-           */
-          LateralViscosityLookup(const std::string &filename,
-                                 const MPI_Comm comm);
+    // namespace internal
+    // {
+    //   /**
+    //    * A class that reads in a text file that contains the
+    //    * temperature-dependency of viscosity for a set of equidistant depth
+    //    * layers. See
+    //    * the data/material-model/steinberger directory for an example data
+    //    * file.
+    //    * The class can return the value for a given depth.
+    //    */
+    //   class LateralViscosityLookup
+    //   {
+    //     public:
+    //       /**
+    //        * Read in a file.
+    //        */
+    //       LateralViscosityLookup(const std::string &filename,
+    //                              const MPI_Comm comm);
 
-          /**
-           * Returns a temperature-dependency for a given depth.
-           */
-          double lateral_viscosity(double depth) const;
+    //       /**
+    //        * Returns a temperature-dependency for a given depth.
+    //        */
+    //       double lateral_viscosity(double depth) const;
 
-          /**
-           * Number of depth slices of the read file.
-           */
-          int get_nslices() const;
-        private:
-          /**
-           * Stored values
-           */
-          std::vector<double> values;
+    //       /**
+    //        * Number of depth slices of the read file.
+    //        */
+    //       int get_nslices() const;
+    //     private:
+    //       /**
+    //        * Stored values
+    //        */
+    //       std::vector<double> values;
 
-          /**
-           * Stored bounds an depths.
-           */
-          double min_depth;
-          double delta_depth;
-          double max_depth;
-      };
+    //       /**
+    //        * Stored bounds an depths.
+    //        */
+    //       double min_depth;
+    //       double delta_depth;
+    //       double max_depth;
+    //   };
 
-      /**
-       * A class that reads in a text file that contains the
-       * viscosity for a set of equidistant depth layers. See
-       * the data/material-model/steinberger directory for an example data
-       * file.
-       * The class can return the value for a given depth.
-       */
-      class RadialViscosityLookup
-      {
-        public:
-          /**
-           * Constructor. Reads in the given file.
-           */
-          RadialViscosityLookup(const std::string &filename,
-                                const MPI_Comm comm);
+    //   /**
+    //    * A class that reads in a text file that contains the
+    //    * viscosity for a set of equidistant depth layers. See
+    //    * the data/material-model/steinberger directory for an example data
+    //    * file.
+    //    * The class can return the value for a given depth.
+    //    */
+    //   class RadialViscosityLookup
+    //   {
+    //     public:
+    //       /**
+    //        * Constructor. Reads in the given file.
+    //        */
+    //       RadialViscosityLookup(const std::string &filename,
+    //                             const MPI_Comm comm);
 
-          /**
-           * Return the viscosity for a given depth.
-           */
-          double radial_viscosity(double depth) const;
+    //       /**
+    //        * Return the viscosity for a given depth.
+    //        */
+    //       double radial_viscosity(double depth) const;
 
-        private:
-          /**
-           * Stored data values.
-           */
-          std::vector<double> values;
+    //     private:
+    //       /**
+    //        * Stored data values.
+    //        */
+    //       std::vector<double> values;
 
-          /**
-           * Depth bounds for the read in values.
-           */
-          double min_depth;
-          double delta_depth;
-          double max_depth;
-      };
-    }
+    //       /**
+    //        * Depth bounds for the read in values.
+    //        */
+    //       double min_depth;
+    //       double delta_depth;
+    //       double max_depth;
+    //   };
+    // }
 
     /**
      * A variable viscosity material model that reads the essential values of
@@ -126,7 +127,6 @@ namespace aspect
      */
     template <int dim>
     class SteinbergerMelt: public MaterialModel::Interface<dim>,
-      public MaterialModel::MeltFractionModel<dim>,
       public ::aspect::SimulatorAccess<dim> 
     {
       public:
@@ -181,10 +181,6 @@ namespace aspect
         void
         evaluate(const MaterialModel::MaterialModelInputs<dim> &in,
                  MaterialModel::MaterialModelOutputs<dim> &out) const override;
-
-        void 
-        melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                        std::vector<double> &melt_fractions) const override;         
 
         /**
          * @name Functions used in dealing with run-time parameters
@@ -339,28 +335,28 @@ namespace aspect
         //  * Parameters for anhydrous melting of peridotite after Katz, 2003
         //  */
 
-        // // for the solidus temperature
-        // double A1;   // °C
-        // double A2; // °C/Pa
-        // double A3; // °C/(Pa^2)
+        // for the solidus temperature
+        double A1;   // °C
+        double A2; // °C/Pa
+        double A3; // °C/(Pa^2)
 
-        // // for the lherzolite liquidus temperature
-        // double B1;   // °C
-        // double B2;   // °C/Pa
-        // double B3; // °C/(Pa^2)
+        // for the lherzolite liquidus temperature
+        double B1;   // °C
+        double B2;   // °C/Pa
+        double B3; // °C/(Pa^2)
 
-        // // for the liquidus temperature
-        // double C1;   // °C
-        // double C2;  // °C/Pa
-        // double C3; // °C/(Pa^2)
+        // for the liquidus temperature
+        double C1;   // °C
+        double C2;  // °C/Pa
+        double C3; // °C/(Pa^2)
 
-        // // for the reaction coefficient of pyroxene
-        // double r1;     // cpx/melt
-        // double r2;     // cpx/melt/GPa
-        // double M_cpx;  // mass fraction of pyroxenite
+        // for the reaction coefficient of pyroxene
+        double r1;     // cpx/melt
+        double r2;     // cpx/melt/GPa
+        double M_cpx;  // mass fraction of pyroxenite
 
-        // // melt fraction exponent
-        // double beta;
+        // melt fraction exponent
+        double beta;
 
         /**
          * Parameters for melting of pyroxenite after Sobolev et al., 2011
@@ -374,6 +370,11 @@ namespace aspect
         // for the melt-fraction dependence of productivity
         double E1;
         double E2;
+
+        /*
+        * Object for computing the melt parameters
+        */
+        ReactionModel::Katz2003MantleMelting<dim> katz2003_model;
     };
   }
 }

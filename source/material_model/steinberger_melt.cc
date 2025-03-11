@@ -19,6 +19,7 @@
 */
 
 
+#include <aspect/material_model/steinberger_melt.h>
 #include <aspect/material_model/steinberger.h>
 #include <aspect/material_model/equation_of_state/interface.h>
 #include <aspect/adiabatic_conditions/interface.h>
@@ -35,183 +36,95 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    namespace internal
-    {
-      LateralViscosityLookup::LateralViscosityLookup(const std::string &filename,
-                                                     const MPI_Comm comm)
-      {
-        std::string temp;
-        // Read data from disk and distribute among processes
-        std::istringstream in(Utilities::read_and_distribute_file_content(filename, comm));
+    // namespace internal
+    // {
+    //   LateralViscosityLookup::LateralViscosityLookup(const std::string &filename,
+    //                                                  const MPI_Comm comm)
+    //   {
+    //     std::string temp;
+    //     // Read data from disk and distribute among processes
+    //     std::istringstream in(Utilities::read_and_distribute_file_content(filename, comm));
 
-        std::getline(in, temp); // eat first line
+    //     std::getline(in, temp); // eat first line
 
-        min_depth=1e20;
-        max_depth=-1;
+    //     min_depth=1e20;
+    //     max_depth=-1;
 
-        while (!in.eof())
-          {
-            double visc, depth;
-            in >> visc;
-            if (in.eof())
-              break;
-            in >> depth;
-            depth *=1000.0;
-            std::getline(in, temp);
+    //     while (!in.eof())
+    //       {
+    //         double visc, depth;
+    //         in >> visc;
+    //         if (in.eof())
+    //           break;
+    //         in >> depth;
+    //         depth *=1000.0;
+    //         std::getline(in, temp);
 
-            min_depth = std::min(depth, min_depth);
-            max_depth = std::max(depth, max_depth);
+    //         min_depth = std::min(depth, min_depth);
+    //         max_depth = std::max(depth, max_depth);
 
-            values.push_back(visc);
-          }
-        delta_depth = (max_depth-min_depth)/(values.size()-1);
-      }
+    //         values.push_back(visc);
+    //       }
+    //     delta_depth = (max_depth-min_depth)/(values.size()-1);
+    //   }
 
-      double LateralViscosityLookup::lateral_viscosity(double depth) const
-      {
-        depth=std::max(min_depth, depth);
-        depth=std::min(depth, max_depth);
+    //   double LateralViscosityLookup::lateral_viscosity(double depth) const
+    //   {
+    //     depth=std::max(min_depth, depth);
+    //     depth=std::min(depth, max_depth);
 
-        Assert(depth>=min_depth, ExcMessage("ASPECT found a depth less than min_depth."));
-        Assert(depth<=max_depth, ExcMessage("ASPECT found a depth greater than max_depth."));
-        const unsigned int idx = static_cast<unsigned int>((depth-min_depth)/delta_depth);
-        Assert(idx<values.size(), ExcMessage("Attempting to look up a depth with an index that would be out of range. (depth-min_depth)/delta_depth too large."));
-        return values[idx];
-      }
+    //     Assert(depth>=min_depth, ExcMessage("ASPECT found a depth less than min_depth."));
+    //     Assert(depth<=max_depth, ExcMessage("ASPECT found a depth greater than max_depth."));
+    //     const unsigned int idx = static_cast<unsigned int>((depth-min_depth)/delta_depth);
+    //     Assert(idx<values.size(), ExcMessage("Attempting to look up a depth with an index that would be out of range. (depth-min_depth)/delta_depth too large."));
+    //     return values[idx];
+    //   }
 
-      int LateralViscosityLookup::get_nslices() const
-      {
-        return values.size();
-      }
+    //   int LateralViscosityLookup::get_nslices() const
+    //   {
+    //     return values.size();
+    //   }
 
-      RadialViscosityLookup::RadialViscosityLookup(const std::string &filename,
-                                                   const MPI_Comm comm)
-      {
-        std::string temp;
-        // Read data from disk and distribute among processes
-        std::istringstream in(Utilities::read_and_distribute_file_content(filename, comm));
+    //   RadialViscosityLookup::RadialViscosityLookup(const std::string &filename,
+    //                                                const MPI_Comm comm)
+    //   {
+    //     std::string temp;
+    //     // Read data from disk and distribute among processes
+    //     std::istringstream in(Utilities::read_and_distribute_file_content(filename, comm));
 
-        min_depth=1e20;
-        max_depth=-1;
+    //     min_depth=1e20;
+    //     max_depth=-1;
 
-        while (!in.eof())
-          {
-            double visc, depth;
-            in >> visc;
-            if (in.eof())
-              break;
-            in >> depth;
-            depth *=1000.0;
-            std::getline(in, temp);
+    //     while (!in.eof())
+    //       {
+    //         double visc, depth;
+    //         in >> visc;
+    //         if (in.eof())
+    //           break;
+    //         in >> depth;
+    //         depth *=1000.0;
+    //         std::getline(in, temp);
 
-            min_depth = std::min(depth, min_depth);
-            max_depth = std::max(depth, max_depth);
+    //         min_depth = std::min(depth, min_depth);
+    //         max_depth = std::max(depth, max_depth);
 
-            values.push_back(visc);
-          }
-        delta_depth = (max_depth-min_depth)/(values.size()-1);
-      }
+    //         values.push_back(visc);
+    //       }
+    //     delta_depth = (max_depth-min_depth)/(values.size()-1);
+    //   }
 
-      double RadialViscosityLookup::radial_viscosity(double depth) const
-      {
-        depth=std::max(min_depth, depth);
-        depth=std::min(depth, max_depth);
+    //   double RadialViscosityLookup::radial_viscosity(double depth) const
+    //   {
+    //     depth=std::max(min_depth, depth);
+    //     depth=std::min(depth, max_depth);
 
-        Assert(depth>=min_depth, ExcMessage("ASPECT found a depth less than min_depth."));
-        Assert(depth<=max_depth, ExcMessage("ASPECT found a depth greater than max_depth."));
-        const unsigned int idx = static_cast<unsigned int>((depth-min_depth)/delta_depth);
-        Assert(idx<values.size(), ExcMessage("Attempting to look up a depth with an index that would be out of range. (depth-min_depth)/delta_depth too large."));
-        return values[idx];
-      }
-    }
-
-
-
-    template <int dim>
-    void
-    SteinbergerMelt<dim>::
-    melt_fractions (const MaterialModel::MaterialModelInputs<dim> &in,
-                    std::vector<double> &melt_fractions) const
-    {
-      const unsigned int peridotite_depletion_index = this->introspection().compositional_index_for_name("peridotite depletion");
-      const unsigned int pyroxenite_depletion_index = this->introspection().compositional_index_for_name("pyroxenite depletion");
-      const unsigned int pyroxenite_index = this->introspection().compositional_index_for_name("pyroxenite");
-
-      for (unsigned int q=0; q<in.n_evaluation_points(); ++q)
-        {
-          const double pressure    = this->get_adiabatic_conditions().pressure(in.position[q]);
-          const double temperature = in.temperature[q];
-          std::vector<double> composition(this->n_compositional_fields());
-
-          for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
-            composition[c] = in.composition[q][this->introspection().component_indices.compositional_fields[c]];
-
-          // anhydrous melting of peridotite after Katz, 2003
-          const double T_solidus  = A1 + 273.15
-                                    + A2 * pressure
-                                    + A3 * pressure * pressure;
-          const double T_lherz_liquidus = B1 + 273.15
-                                          + B2 * pressure
-                                          + B3 * pressure * pressure;
-          const double T_liquidus = C1 + 273.15
-                                    + C2 * pressure
-                                    + C3 * pressure * pressure;
-
-          // melt fraction for peridotite with clinopyroxene
-          double peridotite_melt_fraction;
-          if (temperature < T_solidus || pressure > 1.3e10)
-            peridotite_melt_fraction = 0.0;
-          else if (temperature > T_lherz_liquidus)
-            peridotite_melt_fraction = 1.0;
-          else
-            peridotite_melt_fraction = std::pow((temperature - T_solidus) / (T_lherz_liquidus - T_solidus),beta);
-
-          // melt fraction after melting of all clinopyroxene
-          const double R_cpx = r1 + r2 * std::max(0.0, pressure);
-          const double F_max = M_cpx / R_cpx;
-
-          if (peridotite_melt_fraction > F_max && temperature < T_liquidus)
-            {
-              const double T_max = std::pow(F_max,1/beta) * (T_lherz_liquidus - T_solidus) + T_solidus;
-              peridotite_melt_fraction = F_max + (1 - F_max) * std::pow((temperature - T_max) / (T_liquidus - T_max),beta);
-            }
-
-          // melting of pyroxenite after Sobolev et al., 2011
-          const double T_melting = D1 + 273.15
-                                    + D2 * pressure
-                                    + D3 * pressure * pressure;
-
-          const double discriminant = E1*E1/(E2*E2*4) + (temperature-T_melting)/E2;
-
-          double pyroxenite_melt_fraction;
-          if (temperature < T_melting || pressure > 1.3e10)
-            pyroxenite_melt_fraction = 0.0;
-          else if (discriminant < 0)
-            pyroxenite_melt_fraction = 0.5429;
-          else
-            pyroxenite_melt_fraction = -E1/(2*E2) - std::sqrt(discriminant);
-
-          double melt_fraction;
-          if (this->introspection().compositional_name_exists("pyroxenite"))
-            {
-              melt_fraction = composition[pyroxenite_index] * pyroxenite_melt_fraction +
-                              (1-composition[pyroxenite_index]) * peridotite_melt_fraction;
-            }
-          else
-            melt_fraction = peridotite_melt_fraction;
-
-          melt_fractions[q] = melt_fraction;
-          out.reaction_terms[q][pyroxenite_index] = 0.0
-          out.reaction_terms[q][1] = 0.0
-          out.reaction_terms[q][0] = 0.0
-          out.reaction_terms[q][pyroxenite_depletion_index] = pyroxenite_melt_fraction
-          out.reaction_terms[q][peridotite_depletion_index] = peridotite_melt_fraction
-
-        // melt_fractions[q] = katz2003_model.melt_fraction(in.temperature[q],
-                                                        //  this->get_adiabatic_conditions().pressure(in.position[q]));
-        }
-    }
-
+    //     Assert(depth>=min_depth, ExcMessage("ASPECT found a depth less than min_depth."));
+    //     Assert(depth<=max_depth, ExcMessage("ASPECT found a depth greater than max_depth."));
+    //     const unsigned int idx = static_cast<unsigned int>((depth-min_depth)/delta_depth);
+    //     Assert(idx<values.size(), ExcMessage("Attempting to look up a depth with an index that would be out of range. (depth-min_depth)/delta_depth too large."));
+    //     return values[idx];
+    //   }
+    // }
 
     template <int dim>
     void
@@ -365,26 +278,34 @@ namespace aspect
 
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
-          const double pressure    = eos_in.pressure[i]
+          const double pressure    = this->get_adiabatic_conditions().pressure(in.position[i]);//eos_in.pressure[i];
           const double temperature = in.temperature[i];
-          std::vector<double> composition(in.composition[i].size());
 
           out.thermal_conductivities[i] = thermal_conductivity(in.temperature[i], in.pressure[i], in.position[i]);
           // compute melt fraction
-          const unsigned int pyrolite_depletion_index = this->introspection().compositional_index_for_name("pyrolite depletion");
-          const unsigned int pyroxenite_depletion_index = this->introspection().compositional_index_for_name("pyroxenite depletion");
+          const unsigned int pyrolite_depletion_index = this->introspection().compositional_index_for_name("pyrolite_depletion");
+          const unsigned int pyroxenite_depletion_index = this->introspection().compositional_index_for_name("pyroxenite_depletion");
           const unsigned int pyroxenite_index = this->introspection().compositional_index_for_name("pyroxenite");
           const double old_pyrolite_depletion = in.composition[i][pyrolite_depletion_index];
           const double old_pyroxenite_depletion = in.composition[i][pyroxenite_depletion_index];
-          double pyrolite_melt_fraction = katz2003_model.melt_fraction(temperature, pressure);
+          double pyrolite_melt_fraction = katz2003_model.melt_fraction(temperature, pressure) * (1-old_pyroxenite_depletion-in.composition[i][pyroxenite_index]);
           
+          // melting of pyroxenite after Sobolev et al., 2011
+          const double T_melting = D1 + 273.15
+                                   + D2 * pressure
+                                   + D3 * pressure * pressure;
+
+          const double discriminant = E1*E1/(E2*E2*4) + (temperature-T_melting)/E2;
+
+          double pyroxenite_melt_fraction;
           if (temperature < T_melting || pressure > 1.3e10)
             pyroxenite_melt_fraction = 0.0;
           else if (discriminant < 0)
-            pyroxenite_melt_fraction = 0.5429;
+            pyroxenite_melt_fraction = 0.5429 * (old_pyroxenite_depletion+in.composition[i][pyroxenite_index]);
           else
-            pyroxenite_melt_fraction = -E1/(2*E2) - std::sqrt(discriminant);
-
+            pyroxenite_melt_fraction = (-E1/(2*E2) - std::sqrt(discriminant)) *  (old_pyroxenite_depletion+in.composition[i][pyroxenite_index]);
+          
+          double pyrolite_melt_fraction_change;
           if (pyrolite_melt_fraction > old_pyrolite_depletion)
             {
               pyrolite_melt_fraction_change = pyrolite_melt_fraction - old_pyrolite_depletion;
@@ -392,15 +313,19 @@ namespace aspect
           else
             pyrolite_melt_fraction_change = 0.0;
 
+          pyrolite_melt_fraction_change = std::max(pyrolite_melt_fraction_change, 0.0);
+
+          double pyroxenite_melt_fraction_change;
           if (pyroxenite_melt_fraction > old_pyroxenite_depletion)
             {
               pyroxenite_melt_fraction_change = pyroxenite_melt_fraction - old_pyroxenite_depletion;
             }
           else
             pyroxenite_melt_fraction_change = 0.0;
+          pyroxenite_melt_fraction_change = std::max(pyroxenite_melt_fraction_change, 0.0);
 
           out.reaction_terms[i][pyroxenite_index] = -pyroxenite_melt_fraction_change;
-          out.reaction_terms[i][0] = -pyrolite_melt_fraction_change;
+          out.reaction_terms[i][3] = -pyrolite_melt_fraction_change;
           out.reaction_terms[i][pyroxenite_depletion_index] = pyroxenite_melt_fraction_change;
           out.reaction_terms[i][pyrolite_depletion_index] = pyrolite_melt_fraction_change;
           // for (unsigned int c=0; c<in.composition[i].size(); ++c)
@@ -469,8 +394,11 @@ namespace aspect
     {
       prm.enter_subsection("Material model");
       {
-        prm.enter_subsection("Steinberger model");
+        prm.enter_subsection("Steinberger melt");
         {
+          // Melt Fraction Parameters
+          ReactionModel::Katz2003MantleMelting<dim>::declare_parameters(prm);
+          
           prm.declare_entry ("Data directory", "$ASPECT_SOURCE_DIR/data/material-model/steinberger/",
                              Patterns::DirectoryName (),
                              "The path to the model data. The path may also include the special "
@@ -588,6 +516,40 @@ namespace aspect
                              Patterns::Double (0.),
                              "The maximum thermal conductivity that is allowed in the "
                              "model. Larger values will be cut off.");
+          prm.declare_entry ("D1", "976.0",
+                              Patterns::Double (),
+                              "Constant parameter in the quadratic "
+                              "function that approximates the solidus "
+                              "of pyroxenite. "
+                              "Units: \\si{\\degreeCelsius}.");
+          prm.declare_entry ("D2", "1.329e-7",
+                              Patterns::Double (),
+                              "Prefactor of the linear pressure term "
+                              "in the quadratic function that approximates "
+                              "the solidus of pyroxenite. "
+                              "Note that this factor is different from the "
+                              "value given in Sobolev, 2011, because they use "
+                              "the potential temperature whereas we use the "
+                              "absolute temperature. "
+                              "\\si{\\degreeCelsius\\per\\pascal}.");
+          prm.declare_entry ("D3", "-5.1e-18",
+                              Patterns::Double (),
+                              "Prefactor of the quadratic pressure term "
+                              "in the quadratic function that approximates "
+                              "the solidus of pyroxenite. "
+                              "\\si{\\degreeCelsius\\per\\pascal\\squared}.");
+          prm.declare_entry ("E1", "663.8",
+                              Patterns::Double (),
+                              "Prefactor of the linear depletion term "
+                              "in the quadratic function that approximates "
+                              "the melt fraction of pyroxenite. "
+                              "\\si{\\degreeCelsius\\per\\pascal}.");
+          prm.declare_entry ("E2", "-611.4",
+                              Patterns::Double (),
+                              "Prefactor of the quadratic depletion term "
+                              "in the quadratic function that approximates "
+                              "the melt fraction of pyroxenite. "
+                              "\\si{\\degreeCelsius\\per\\pascal\\squared}.");
 
           // Table lookup parameters
           EquationOfState::ThermodynamicTableLookup<dim>::declare_parameters(prm);
@@ -606,7 +568,7 @@ namespace aspect
     {
       prm.enter_subsection("Material model");
       {
-        prm.enter_subsection("Steinberger model");
+        prm.enter_subsection("Steinberger melt");
         {
           data_directory                  = Utilities::expand_ASPECT_SOURCE_DIR(prm.get ("Data directory"));
           radial_viscosity_file_name      = prm.get ("Radial viscosity file name");
@@ -619,6 +581,11 @@ namespace aspect
           viscosity_averaging_scheme      = MaterialUtilities::parse_compositional_averaging_operation ("Viscosity averaging scheme",
                                             prm);
           thermal_conductivity_value      = prm.get_double ("Thermal conductivity");
+          D1              = prm.get_double ("D1");
+          D2              = prm.get_double ("D2");
+          D3              = prm.get_double ("D3");
+          E1              = prm.get_double ("E1");
+          E2              = prm.get_double ("E2");
 
           // Rheological parameters
           if (prm.get ("Thermal conductivity formulation") == "constant")
@@ -697,6 +664,10 @@ namespace aspect
           Utilities::MapParsing::Options options(chemical_field_names, "Composition viscosity prefactors");
           options.list_of_allowed_keys = compositional_field_names;
           viscosity_prefactors = Utilities::MapParsing::parse_map_to_double_array(prm.get("Composition viscosity prefactors"), options);
+          
+          // Melt model
+          katz2003_model.initialize_simulator (this->get_simulator());
+          katz2003_model.parse_parameters(prm);
 
           prm.leave_subsection();
         }
@@ -737,7 +708,7 @@ namespace aspect
 {
   namespace MaterialModel
   {
-    ASPECT_REGISTER_MATERIAL_MODEL(Steinberger melt,
+    ASPECT_REGISTER_MATERIAL_MODEL(SteinbergerMelt,
                                    "Steinberger melt",
                                    "This material model looks up the viscosity from the tables that "
                                    "correspond to the paper of Steinberger and Calderwood "
