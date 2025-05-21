@@ -246,10 +246,10 @@ namespace aspect
               switch (c)
                 {
                   case 0:
-                    if (depth < reaction_depth) delta_C = -in.composition[i][0];
+                    if (depth < reaction_depth) delta_C = in.composition[i][1];
                     break;
                   case 1:
-                    if (depth < reaction_depth) delta_C = in.composition[i][0];
+                    if (depth < reaction_depth) delta_C = -in.composition[i][1];
                     break;
                   default:
                     delta_C = 0.0;
