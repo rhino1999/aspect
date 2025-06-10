@@ -325,7 +325,6 @@ namespace aspect
           pyroxenite_melt_fraction_change = std::max(pyroxenite_melt_fraction_change, 0.0);
 
           out.reaction_terms[i][pyroxenite_index] = -pyroxenite_melt_fraction_change;
-          out.reaction_terms[i][3] = -pyrolite_melt_fraction_change;
           out.reaction_terms[i][pyroxenite_depletion_index] = pyroxenite_melt_fraction_change;
           out.reaction_terms[i][pyrolite_depletion_index] = pyrolite_melt_fraction_change;
           // for (unsigned int c=0; c<in.composition[i].size(); ++c)
