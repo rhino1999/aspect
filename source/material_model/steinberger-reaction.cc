@@ -240,14 +240,13 @@ namespace aspect
       for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
         {
           const double depth = this->get_geometry_model().depth(in.position[i]);
-          double sum_delta_C = 0.0;
           for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
             {
               double delta_C = 0.0;
               switch (c)
                 {
                   case 0:
-                    if (depth < reaction_depth) delta_C = in.composition[i][1];
+                    if (depth < reaction_depth) delta_C = in.composition[i][0];
                     break;
                   // case 1:
                   //   if (depth < reaction_depth) delta_C = in.composition[i][1];
@@ -257,10 +256,7 @@ namespace aspect
                     break;
                 }
               out.reaction_terms[i][c] = delta_C;
-              sum_delta_C += delta_C;
             }
-
-          out.reaction_terms[i][0] = - sum_delta_C;
 
           // Calculate volume fractions from mass fractions
           // If there is only one lookup table, set the mass and volume fractions to 1
