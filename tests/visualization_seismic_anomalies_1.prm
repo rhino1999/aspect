@@ -1,6 +1,5 @@
-# This is a test for the seismic anomalies postprocessor. The model has a pyrolite
-# and a pyroxenite component. The seismic velocity are based on the compositional
-# fraction.
+# This is a test for the "lateral average" average velocity scheme used in 
+# the seismic anomalies postprocessor. 
 
 set End time                               = 0
 set Adiabatic surface temperature          = 1600.0

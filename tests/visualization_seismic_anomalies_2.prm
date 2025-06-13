@@ -1,6 +1,6 @@
-# This is a test for the seismic anomalies postprocessor. The model has a pyrolite
-# and a pyroxenite component. The seismic velocity are based on the compositional
-# fraction.
+# This is a test for the "reference profile" average velocity scheme used in 
+# the seismic anomalies postprocessor. The reference velocity is estimated
+# assuming adiabatic temperature and pressure.
 
 set End time                               = 0
 set Adiabatic surface temperature          = 1600.0
@@ -57,12 +57,6 @@ subsection Postprocess
     set Interpolate output            = false
     set Output format                 = gnuplot
     set List of output variables      = Vs anomaly, Vp anomaly
-    subsection Vs anomaly
-      set Number of depth slices = 16
-    end
-    subsection Vp anomaly
-      set Number of depth slices = 16
-    end
   end
   
 end
