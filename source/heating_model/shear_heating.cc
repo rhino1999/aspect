@@ -37,11 +37,11 @@ namespace aspect
              ExcMessage ("Heating outputs need to have the same number of entries as the material model inputs."));
 
       // Check if the material model has additional outputs relevant for the shear heating.
-      const ShearHeatingOutputs<dim> *shear_heating_out =
-        material_model_outputs.template get_additional_output<ShearHeatingOutputs<dim>>();
+      const std::shared_ptr<const ShearHeatingOutputs<dim>> shear_heating_out
+        = material_model_outputs.template get_additional_output_object<ShearHeatingOutputs<dim>>();
 
-      const PrescribedShearHeatingOutputs<dim> *prescribed_shear_heating_out =
-        material_model_outputs.template get_additional_output<PrescribedShearHeatingOutputs<dim>>();
+      const std::shared_ptr<const PrescribedShearHeatingOutputs<dim>> prescribed_shear_heating_out
+        = material_model_outputs.template get_additional_output_object<PrescribedShearHeatingOutputs<dim>>();
 
       for (unsigned int q=0; q<heating_model_outputs.heating_source_terms.size(); ++q)
         {
@@ -67,11 +67,13 @@ namespace aspect
           if (limit_stress)
             {
               // Compute yield stress.
+              MaterialModel::Rheology::DruckerPragerParameters drucker_prager_parameters;
+              drucker_prager_parameters.cohesion = cohesion;
+              drucker_prager_parameters.angle_internal_friction = friction_angle;
+              drucker_prager_parameters.max_yield_stress = std::numeric_limits<double>::max();
               const double pressure = std::max(material_model_inputs.pressure[q], 0.0);
-              const double yield_stress = drucker_prager_plasticity.compute_yield_stress(cohesion,
-                                                                                         friction_angle,
-                                                                                         pressure,
-                                                                                         std::numeric_limits<double>::max());
+              const double yield_stress = drucker_prager_plasticity.compute_yield_stress(pressure,
+                                                                                         drucker_prager_parameters);
 
               // Scale the stress accordingly.
               const double deviatoric_stress = 2 * material_model_outputs.viscosities[q] * std::sqrt(std::fabs(second_invariant(deviatoric_strain_rate)));

@@ -544,14 +544,6 @@ namespace aspect
             prm.leave_subsection();
           }
 
-        // TODO: Remove deprecated parameters in next release.
-        const bool advect_log_grainsize            = prm.get_bool ("Advect logarithm of grain size");
-        AssertThrow(advect_log_grainsize == false,
-                    ExcMessage("Error: The 'Advect logarithm of grain size' parameter "
-                               "has been removed. Please remove it from your input file. For models "
-                               "with large spatial variations in grain size, please advect your "
-                               "grain size on particles."));
-
         arkode_initial_step_size = prm.get_double ("ARKode initial step size");
         arkode_minimum_step_size = prm.get_double ("ARKode minimum step size");
 
@@ -602,7 +594,7 @@ namespace aspect
       {
         // These properties will be used by the heating model to reduce
         // shear heating by the amount of work done to reduce grain size.
-        if (out.template get_additional_output<HeatingModel::ShearHeatingOutputs<dim>>() == nullptr)
+        if (out.template has_additional_output_object<HeatingModel::ShearHeatingOutputs<dim>>() == false)
           {
             const unsigned int n_points = out.n_evaluation_points();
             out.additional_outputs.push_back(
@@ -618,7 +610,7 @@ namespace aspect
                                                         const typename MaterialModel::MaterialModelOutputs<dim> &out,
                                                         const std::vector<unsigned int> &phase_indices,
                                                         const std::vector<double> &dislocation_viscosities,
-                                                        std::vector<std::unique_ptr<MaterialModel::AdditionalMaterialOutputs<dim>>> &additional_outputs) const
+                                                        std::vector<std::shared_ptr<MaterialModel::AdditionalMaterialOutputs<dim>>> &additional_outputs) const
       {
         for (auto &additional_output: additional_outputs)
           if (HeatingModel::ShearHeatingOutputs<dim> *shear_heating_out = dynamic_cast<HeatingModel::ShearHeatingOutputs<dim> *>(additional_output.get()))

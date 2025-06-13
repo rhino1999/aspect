@@ -46,7 +46,7 @@ namespace aspect
       get_names () const
       {
         std::vector<std::string> solution_names;
-
+        solution_names.reserve(dim * (dim + 1));
         // dim principal stress values
         for (unsigned int i=0; i<dim; ++i)
           solution_names.push_back("principal_stress_" + std::to_string(i+1));
@@ -69,6 +69,7 @@ namespace aspect
         std::vector<DataComponentInterpretation::DataComponentInterpretation> solution_components;
 
         // dim principal stress values
+        solution_components.reserve(dim * (dim + 1));
         for (unsigned int i=0; i<dim; ++i)
           solution_components.push_back(DataComponentInterpretation::component_is_scalar);
 
@@ -136,7 +137,8 @@ namespace aspect
             else
               {
                 // Get the total deviatoric stress from the material model.
-                const MaterialModel::ElasticAdditionalOutputs<dim> *elastic_additional_out = out.template get_additional_output<MaterialModel::ElasticAdditionalOutputs<dim>>();
+                const std::shared_ptr<MaterialModel::ElasticAdditionalOutputs<dim>> elastic_additional_out
+                  = out.template get_additional_output_object<MaterialModel::ElasticAdditionalOutputs<dim>>();
 
                 Assert(elastic_additional_out != nullptr, ExcMessage("Elastic Additional Outputs are needed for the 'principal stress' postprocessor, but they have not been created."));
 

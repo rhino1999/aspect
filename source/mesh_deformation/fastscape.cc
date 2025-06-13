@@ -141,6 +141,7 @@ namespace aspect
        */
       void fastscape_execute_step_();
 
+#ifdef ASPECT_HAVE_FASTSCAPE_NAMED_VTK
       /**
        * Create a .VTK file for the FastScape surface within the FastScape folder of the
        * ASPECT output folder.
@@ -150,6 +151,7 @@ namespace aspect
                                 unsigned int *astep,
                                 const char *c,
                                 const unsigned int *length);
+#endif
 
       /**
        * Copy the current FastScape topography.
@@ -529,11 +531,7 @@ namespace aspect
           // Find out our velocities from the change in height.
           // Where mesh_velocity_z is a vector of array size that exists on all processes.
           for (unsigned int i=0; i<fastscape_array_size; ++i)
-            {
-              mesh_velocity_z[i] = (elevation[i] - elevation_old[i])/aspect_timestep_in_years;
-            }
-
-          Utilities::MPI::broadcast(this->get_mpi_communicator(), mesh_velocity_z, 0);
+            mesh_velocity_z[i] = (elevation[i] - elevation_old[i])/aspect_timestep_in_years;
         }
       else
         {
@@ -553,19 +551,23 @@ namespace aspect
                             mesh_velocity_z,
                             aspect_timestep_in_years,
                             fastscape_steps_per_aspect_step);
-
-          mesh_velocity_z = Utilities::MPI::broadcast(this->get_mpi_communicator(), mesh_velocity_z, 0);
         }
 
-      // Get the sizes needed for a data table of the mesh velocities.
+      // At this point, the root process will have filled the mesh_velocity_z array,
+      // and we should convert that into a table to hold all velocity values
+      // that will be interpolated back to ASPECT. We need this table on all
+      // processes, and can achieve this goal by first filling it on the root process,
+      // and then replicating it on all processes (if possible using shared memory).
       TableIndices<dim> size_idx;
       for (unsigned int d=0; d<dim; ++d)
-        {
-          size_idx[d] = table_intervals[d]+1;
-        }
+        size_idx[d] = table_intervals[d]+1;
 
-      // Initialize a table to hold all velocity values that will be interpolated back to ASPECT.
-      const Table<dim,double> velocity_table = fill_data_table(mesh_velocity_z, size_idx, fastscape_nx, fastscape_ny);
+      Table<dim,double> velocity_table;
+      if (Utilities::MPI::this_mpi_process(this->get_mpi_communicator()) == 0)
+        velocity_table = fill_data_table(mesh_velocity_z, size_idx, fastscape_nx, fastscape_ny);
+
+      velocity_table.replicate_across_communicator (this->get_mpi_communicator(),
+                                                    /*root_process=*/0);
 
       // As our grid_extent variable end points do not account for the change related to an origin
       // not at 0, we adjust this here into an interpolation extent.
@@ -576,10 +578,12 @@ namespace aspect
           interpolation_extent[d].second = (grid_extent[d].second + grid_extent[d].first);
         }
 
-      //Functions::InterpolatedUniformGridData<dim> *velocities;
-      Functions::InterpolatedUniformGridData<dim> velocities (interpolation_extent,
-                                                              table_intervals,
-                                                              velocity_table);
+      // Then create a function that can be interpolated from the data table.
+      // Use move semantics to ensure that we keep using the replicated
+      // table:
+      Functions::InterpolatedUniformGridData<dim> velocities (std::move(interpolation_extent),
+                                                              std::move(table_intervals),
+                                                              std::move(velocity_table));
 
       VectorFunctionFromScalarFunctionObject<dim> vector_function_object(
         [&](const Point<dim> &p) -> double
@@ -765,7 +769,7 @@ namespace aspect
             fastscape_mesh_filled = false;
         }
 
-      Utilities::MPI::broadcast(this->get_mpi_communicator(), fastscape_mesh_filled, 0);
+      fastscape_mesh_filled = Utilities::MPI::broadcast(this->get_mpi_communicator(), fastscape_mesh_filled, 0);
       AssertThrow (fastscape_mesh_filled == true,
                    ExcMessage("The FastScape mesh is missing data. A likely cause for this is that the "
                               "maximum surface refinement or surface refinement difference are improperly set."));
@@ -858,6 +862,7 @@ namespace aspect
         // If it is the first timestep, write an initial VTK file.
         if (current_timestep == 1)
           {
+#ifdef ASPECT_HAVE_FASTSCAPE_NAMED_VTK
             this->get_pcout() << "      Writing initial VTK..." << std::endl;
             // FastScape by default visualizes a field called HHHHH,
             // and the parameter this shows will be whatever is given as the first
@@ -867,6 +872,16 @@ namespace aspect
                                  &visualization_step,
                                  dirname_char,
                                  &dirname_length);
+#else
+            (void)extra_vtk_field;
+            (void)vexp;
+            (void)visualization_step;
+            (void)dirname_char;
+            (void)dirname_length;
+
+            this->get_pcout() << "      Not writing initial VTK because the FastScape library does not support this functionality."
+                              << std::endl;
+#endif
           }
 
         for (unsigned int fastscape_iteration = 0; fastscape_iteration < fastscape_iterations; ++fastscape_iteration)
@@ -924,6 +939,7 @@ namespace aspect
 
         if (write_vtk)
           {
+#ifdef ASPECT_HAVE_FASTSCAPE_NAMED_VTK
             this->get_pcout() << "      Writing FastScape VTK..." << std::endl;
             visualization_step = current_timestep;
             fastscape_named_vtk_(extra_vtk_field.data(),
@@ -931,6 +947,16 @@ namespace aspect
                                  &visualization_step,
                                  dirname_char,
                                  &dirname_length);
+#else
+            (void)extra_vtk_field;
+            (void)vexp;
+            (void)visualization_step;
+            (void)dirname_char;
+            (void)dirname_length;
+
+            this->get_pcout() << "      Not writing FastScape VTK because the FastScape library does not support this functionality."
+                              << std::endl;
+#endif
           }
       }
     }
@@ -1041,7 +1067,7 @@ namespace aspect
               // stacking controls, apply the factor if the wind barrier was not applied to this point.
               if (elevation[fastscape_nx*i+j] > flat_elevation)
                 {
-                  if ( stack_controls==true || !stack_controls && (control_applied[fastscape_nx*i+j]==0) )
+                  if ( stack_controls==true || (!stack_controls && (control_applied[fastscape_nx*i+j]==0)) )
                     {
                       bedrock_river_incision_rate_array[fastscape_nx*i+j] *= flat_erosional_factor;
                       bedrock_transport_coefficient_array[fastscape_nx*i+j] *= flat_erosional_factor;
@@ -1186,7 +1212,7 @@ namespace aspect
           // model, and set the ghost node according to the direction of flow. As FastScape will
           // receive all velocities it will have a direction, and we only need to look at the (non-ghost)
           // nodes directly to the left and right.
-          if (left == 0 && right == 0 || leftright_ghost_nodes_periodic == true)
+          if ((left == 0 && right == 0) || leftright_ghost_nodes_periodic == true)
             {
               // First we assume that flow is going to the left.
               unsigned int side = index_left;
@@ -1321,7 +1347,7 @@ namespace aspect
                 elevation[index_bot] = elevation[index_bot + fastscape_nx];
             }
 
-          if (bottom == 0 && top == 0 || topbottom_ghost_nodes_periodic == true)
+          if ((bottom == 0 && top == 0) || topbottom_ghost_nodes_periodic == true)
             {
               unsigned int side = index_bot;
               unsigned int op_side = index_top;
@@ -1382,18 +1408,17 @@ namespace aspect
 
     template <int dim>
     Table<dim,double>
-    FastScape<dim>::fill_data_table(std::vector<double> &values,
-                                    TableIndices<dim> &size_idx,
+    FastScape<dim>::fill_data_table(const std::vector<double> &values,
+                                    const TableIndices<dim> &size_idx,
                                     const unsigned int &fastscape_nx,
                                     const unsigned int &fastscape_ny) const
     {
       // Create data table based off of the given size.
       Table<dim,double> data_table;
       data_table.TableBase<dim,double>::reinit(size_idx);
-      TableIndices<dim> idx;
 
       // Loop through the data table and fill it with the velocities from FastScape.
-      if (dim == 2)
+      if constexpr (dim == 2)
         {
           std::vector<double> values_2d(fastscape_nx);
 
@@ -1423,42 +1448,21 @@ namespace aspect
             }
 
           for (unsigned int x=0; x<data_table.size()[0]; ++x)
-            {
-              idx[0] = x;
-
-              for (unsigned int y=0; y<(data_table.size()[1]); ++y)
-                {
-                  idx[1] = y;
-
-                  // Convert back to m/s.
-                  data_table(idx) = values_2d[x] / year_in_seconds;
-                }
-            }
+            for (unsigned int y=0; y<(data_table.size()[1]); ++y)
+              // Convert back to m/s.
+              data_table(x,y) = values_2d[x] / year_in_seconds;
         }
       else
         {
           // Indexes through x, y, and z.
           for (unsigned int x=0; x<data_table.size()[0]; ++x)
-            {
-              idx[0] = x;
-
-              for (unsigned int y=0; y<data_table.size()[1]; ++y)
-                {
-                  idx[1] = y;
-
-                  for (unsigned int z=0; z<data_table.size()[2]; ++z)
-                    {
-                      idx[2] = z;
-
-                      // Convert back to m/s.
-                      data_table(idx) = values[(fastscape_nx+1)*use_ghost_nodes+fastscape_nx*y+x] / year_in_seconds;
-
-                    }
-                }
-            }
+            for (unsigned int y=0; y<data_table.size()[1]; ++y)
+              for (unsigned int z=0; z<data_table.size()[2]; ++z)
+                // Convert back to m/s.
+                data_table(x,y,z) = values[(fastscape_nx+1)*use_ghost_nodes+fastscape_nx*y+x] / year_in_seconds;
         }
 
-      return data_table;
+      return std::move(data_table);
     }
 
 

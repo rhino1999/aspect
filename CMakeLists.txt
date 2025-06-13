@@ -170,6 +170,19 @@ else()
 endif()
 
 
+# Python
+set(ASPECT_WITH_PYTHON OFF CACHE BOOL "If enabled, ASPECT is configured with Python support.")
+message(STATUS "Using ASPECT_WITH_PYTHON = '${ASPECT_WITH_PYTHON}'")
+if(ASPECT_WITH_PYTHON)
+  find_package(Python3 COMPONENTS Interpreter Development NumPy)
+  if(Python3_FOUND)
+    message(STATUS "  PYTHON_EXECUTABLE: ${Python3_EXECUTABLE}")
+  else()
+    message(FATAL_ERROR "Python not found. Consider disabling ASPECT_WITH_PYTHON.")
+  endif()
+endif()
+
+
 # PerpleX
 find_package(PerpleX QUIET
   HINTS ./contrib/perplex/install/ ../ ../../ ${PERPLEX_DIR} $ENV{PERPLEX_DIR})
@@ -196,20 +209,26 @@ endif()
 
 
 # FastScape library and link it to ASPECT if requested
-set(ASPECT_WITH_FASTSCAPE OFF CACHE BOOL "Whether the user wants to compile ASPECT with the landscape evolution code FastScape, or not.")
+set(ASPECT_WITH_FASTSCAPE OFF CACHE BOOL
+    "Whether to compile ASPECT with the landscape evolution code FastScape (the 
+     older, Fortran-based version), or not.")
 message(STATUS "Using ASPECT_WITH_FASTSCAPE = '${ASPECT_WITH_FASTSCAPE}'")
+
 if(ASPECT_WITH_FASTSCAPE)
-  find_library(FASTSCAPE NAMES fastscapelib_fortran PATHS $ENV{FASTSCAPE_DIR} ${FASTSCAPE_DIR} PATH_SUFFIXES lib NO_DEFAULT_PATH)
+  find_library(FASTSCAPE NAMES fastscapelib_fortran
+               PATHS $ENV{FASTSCAPE_DIR} ${FASTSCAPE_DIR} PATH_SUFFIXES lib
+               NO_DEFAULT_PATH)
   if(FASTSCAPE)
      message(STATUS "FastScape library found at ${FASTSCAPE_DIR}")
 
-    # Get the fastscape source path so we can check the version.
+    # Get the fastscape source path so we can check the version further down below.
     file(STRINGS "${FASTSCAPE_DIR}/Makefile" _fastscape_makefile)
     foreach(_line ${_fastscape_makefile})
         if("${_line}" MATCHES "^CMAKE_SOURCE_DIR")
           string(REPLACE "CMAKE_SOURCE_DIR = " "" FASTSCAPE_SOURCE_DIR ${_line})
         endif()
     endforeach()
+    message(STATUS "FastScape source path found at ${FASTSCAPE_SOURCE_DIR}")
 
     # Now get the version from setup.py
     message(STATUS "Parsing '${FASTSCAPE_SOURCE_DIR}/setup.py' for version information")
@@ -220,13 +239,38 @@ if(ASPECT_WITH_FASTSCAPE)
         string(REGEX REPLACE "[^0-9.]" "" FASTSCAPE_VERSION ${_line})
       endif()
     endforeach()
+    message(STATUS "FastScape version number is ${FASTSCAPE_VERSION}")
 
     # Throw an error if the version is too old.
     if(${FASTSCAPE_VERSION} VERSION_LESS 2.8)
       message(FATAL_ERROR "The linked FastScape version is ${FASTSCAPE_VERSION}, however at least 2.8.0 is required.")
     endif()
+
+    # FastScape is written in Fortran 90, and as a consequence we will have
+    # to link against the Fortran 90 support libraries. This is necessary
+    # because FastScape-lib-fortran is only a static library that does not
+    # record which support library it needs to link against when we form
+    # the executable.
+    enable_language(Fortran)
+
+    # Our wrappers call a function fastscape_named_vtk() that does not
+    # exist in the upstream fastscapelib_fortran library, but has been
+    # added to Derek Neuharth's branch that is used by most of those
+    # who are using FastScape.  Check for the existence of this
+    # symbol, and if so set the ASPECT_HAVE_FASTSCAPE_NAMED_VTK
+    # variable that we can #define or not in config.h
+    include(CheckLibraryExists)
+    set(_required_libs "${CMAKE_REQUIRED_LIBRARIES}")
+    set(CMAKE_REQUIRED_LIBRARIES "gfortran")
+    check_library_exists(${FASTSCAPE} fastscape_named_vtk_ "" ASPECT_HAVE_FASTSCAPE_NAMED_VTK)
+    if (ASPECT_HAVE_FASTSCAPE_NAMED_VTK)
+      message(STATUS "Found fastscape_named_vtk -- enabling its use")
+    else()
+      message(STATUS "Did not find fastscape_named_vtk -- disabling its use")
+    endif()
+    set(CMAKE_REQUIRED_LIBRARIES "${_required_libs}")
   else()
-     message(FATAL_ERROR "Trying to link with FastScape but libfastscapelib_fortran.so was not found in ${FASTSCAPE_DIR}")
+     message(FATAL_ERROR "Trying to link with FastScape but neither libfastscapelib_fortran.so nor libfastscapelib_fortran.a was found in ${FASTSCAPE_DIR} or its subdirectories.")
   endif()
 endif()
 
@@ -375,8 +419,24 @@ endif()
 
 # Generate compile_commands.json for tooling (VS Code, etc.)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
+# Also set a flag that we query when deciding whether to drive
+# compilers and linkers in such a way that error and warning messages
+# use colors.
 set(FORCE_COLORED_OUTPUT ON
     CACHE BOOL "Forces colored output when compiling with gcc and clang.")
+
+if (${FORCE_COLORED_OUTPUT})
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER MATCHES "AppleClang")
+    string(APPEND DEAL_II_CXX_FLAGS_DEBUG " -fcolor-diagnostics")
+    string(APPEND DEAL_II_CXX_FLAGS_RELEASE " -fcolor-diagnostics")
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    string(APPEND DEAL_II_CXX_FLAGS_DEBUG " -fdiagnostics-color=always")
+    string(APPEND DEAL_II_CXX_FLAGS_RELEASE " -fdiagnostics-color=always")
+  endif()
+endif()
+
 
 # Query the current git commit so we can put it into the start-up
 # message of ASPECT.
@@ -418,11 +478,15 @@ endif()
 #
 # While there, also set up the variable to use "unity" builds.
 if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.16)
-  set(ASPECT_PRECOMPILE_HEADERS ON CACHE BOOL "Precompile external header files to speedup compile time. Currently only supported for CMake 3.16 and newer versions.")
-  set(ASPECT_UNITY_BUILD ON CACHE BOOL "Combine source files into less compile targets to speedup compile time. Currently only supported for CMake 3.16 and newer versions.")
+  set(ASPECT_PRECOMPILE_HEADERS ON CACHE BOOL
+      "Precompile external header files to speedup compile time. Currently only supported for CMake 3.16 and newer versions.")
+  set(ASPECT_UNITY_BUILD ON CACHE BOOL
+      "Combine source files into less compile targets to speedup compile time. Currently only supported for CMake 3.16 and newer versions.")
 else()
-  set(ASPECT_PRECOMPILE_HEADERS OFF CACHE BOOL "Precompile external header files to speedup compile time. Currently only supported for CMake 3.16 and newer versions." FORCE)
-  set(ASPECT_UNITY_BUILD OFF CACHE BOOL "Combine source files into less compile targets to speedup compile time. Currently only supported for CMake 3.16 and newer versions." FORCE)
+  set(ASPECT_PRECOMPILE_HEADERS OFF CACHE BOOL
+      "Precompile external header files to speedup compile time. Currently only supported for CMake 3.16 and newer versions." FORCE)
+  set(ASPECT_UNITY_BUILD OFF CACHE BOOL
+      "Combine source files into less compile targets to speedup compile time. Currently only supported for CMake 3.16 and newer versions." FORCE)
 endif()
 
 if(ASPECT_PRECOMPILE_HEADERS AND CMAKE_CXX_COMPILER_ID MATCHES "Intel")
@@ -764,16 +828,6 @@ if(ASPECT_HAVE_LINK_H)
   message(STATUS "Enabling checking of compatible deal.II library when loading plugins")
 endif()
 
-if (${FORCE_COLORED_OUTPUT})
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER MATCHES "AppleClang")
-    string(APPEND DEAL_II_CXX_FLAGS_DEBUG " -fcolor-diagnostics")
-    string(APPEND DEAL_II_CXX_FLAGS_RELEASE " -fcolor-diagnostics")
-  elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    string(APPEND DEAL_II_CXX_FLAGS_DEBUG " -fdiagnostics-color=always")
-    string(APPEND DEAL_II_CXX_FLAGS_RELEASE " -fdiagnostics-color=always")
-  endif()
-endif()
-
 # deal.II versions >=9.5 disable deprecation warnings in user code. Enable
 # the warnings again by removing the flag that disables them.
 string(REPLACE "-Wno-deprecated-declarations" "" DEAL_II_WARNING_FLAGS "${DEAL_II_WARNING_FLAGS}")
@@ -870,6 +924,16 @@ if(${ZLIB_FOUND})
   endforeach()
 endif()
 
+# Python3
+if(${Python3_FOUND})
+  message(STATUS "Linking ASPECT against Python3")
+  include_directories(${Python3_INCLUDE_DIRS} ${Python3_NumPy_INCLUDE_DIRS})
+
+  foreach(_T ${TARGET_EXECUTABLES})
+    target_link_libraries(${_T} ${Python3_LIBRARIES})
+  endforeach()
+endif()
+
 # PerpleX
 if(${PerpleX_FOUND})
   message(STATUS "Linking ASPECT against PerpleX")
@@ -893,6 +957,14 @@ if (FASTSCAPE)
   message(STATUS "Linking ASPECT against Fastscape")
   foreach(_T ${TARGET_EXECUTABLES})
     target_link_libraries(${_T} ${FASTSCAPE})
+  endforeach()
+
+  # Also link against the compiler support library because fastscapelib_fortran
+  # is only a static library that doesn't record that it needs the compiler
+  # support library.
+  message(STATUS "Linking ASPECT against gfortran support library")
+  foreach(_T ${TARGET_EXECUTABLES})
+    target_link_libraries(${_T} gfortran)
   endforeach()
 endif()
 

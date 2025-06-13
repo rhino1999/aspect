@@ -200,6 +200,7 @@ namespace aspect
                      TimerOutput::never,
                      TimerOutput::wall_times),
     total_walltime_until_last_snapshot(0.),
+    last_checkpoint_id (numbers::invalid_unsigned_int),
     initial_topography_model(InitialTopographyModel::create_initial_topography_model<dim>(prm)),
     geometry_model (GeometryModel::create_geometry_model<dim>(prm)),
     // make sure the parameters object gets a chance to
@@ -316,7 +317,8 @@ namespace aspect
 
         material_model->create_additional_named_outputs(out);
 
-        MaterialModel::ElasticAdditionalOutputs<dim> *elastic_outputs = out.template get_additional_output<MaterialModel::ElasticAdditionalOutputs<dim>>();
+        const std::shared_ptr<MaterialModel::ElasticAdditionalOutputs<dim>> elastic_outputs
+          = out.template get_additional_output_object<MaterialModel::ElasticAdditionalOutputs<dim>>();
 
         // Throw if the elastic_outputs do not exist
         AssertThrow(elastic_outputs != nullptr,
@@ -2020,6 +2022,10 @@ namespace aspect
     // start-up
     if (parameters.resume_computation == true)
       {
+        last_checkpoint_id = determine_last_good_snapshot();
+        AssertThrow(last_checkpoint_id != numbers::invalid_unsigned_int,
+                    ExcMessage("You requested to restart the simulation from the last checkpoint but no written checkpoint has been found."));
+
         resume_from_snapshot();
         // we need to remove additional_refinement_times that are in the past
         // and adjust max_refinement_level which is not written to file
@@ -2034,6 +2040,9 @@ namespace aspect
       }
     else
       {
+        // This will cause the next checkpoint to be written to be 01:
+        last_checkpoint_id = 0;
+
         time = parameters.start_time;
 
         // Instead of calling global_refine(n) we flag all cells for

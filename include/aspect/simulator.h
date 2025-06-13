@@ -860,6 +860,14 @@ namespace aspect
        * restarting from a saved state
        * @{
        */
+
+      /**
+       * Determine the id of the last good snapshot that was written by reading
+       * the last_good_checkpoint.txt file from the output/checkpoint/ folder.
+       * It will return numbers::invalid_unsigned_int if no snapshot exists.
+       */
+      unsigned int determine_last_good_snapshot() const;
+
       /**
        * Save the state of this program to a set of files in the output
        * directory. In reality, however, only some variables are stored (in
@@ -1800,6 +1808,13 @@ namespace aspect
       double total_walltime_until_last_snapshot;
 
       /**
+       * Checkpointing happens in rotating folders /restart/01/, /restart/02/,
+       * etc.. This variable holds the last index used and as such should
+       * contain the last valid checkpoint written.
+       */
+      unsigned int last_checkpoint_id;
+
+      /**
        * In output_statistics(), where we output the statistics object above,
        * we do the actual writing on a separate thread. This variable is the
        * handle we get for this thread so that we can wait for it to finish,
@@ -1851,16 +1866,16 @@ namespace aspect
        * after this point, it needs to keep its own shared pointer
        * to it.
        */
-      std::shared_ptr<WorldBuilder::World>                                   world_builder;
+      std::shared_ptr<WorldBuilder::World>                      world_builder;
 #endif
-      BoundaryVelocity::Manager<dim>                                         boundary_velocity_manager;
-      BoundaryTraction::Manager<dim>                                         boundary_traction_manager;
-      const std::unique_ptr<BoundaryHeatFlux::Interface<dim>>                boundary_heat_flux;
+      BoundaryVelocity::Manager<dim>                            boundary_velocity_manager;
+      BoundaryTraction::Manager<dim>                            boundary_traction_manager;
+      const std::unique_ptr<BoundaryHeatFlux::Interface<dim>>   boundary_heat_flux;
 
       /**
        * The managers holding different sets of particles
        */
-      std::vector<Particle::Manager<dim>> particle_managers;
+      std::vector<Particle::Manager<dim>>                       particle_managers;
 
       /**
        * @}
@@ -1917,7 +1932,7 @@ namespace aspect
        * a MappingQ1Eulerian object to describe the mesh deformation,
        * swapping it in for the original MappingQ or MappingCartesian object.
        */
-      std::unique_ptr<Mapping<dim>>                            mapping;
+      std::unique_ptr<Mapping<dim>>                             mapping;
 
       const FESystem<dim>                                       finite_element;
 
@@ -1936,8 +1951,8 @@ namespace aspect
        * 'constraints' is computed in setup_dofs(), 'current_constraints' is
        * done in compute_current_constraints().
        */
-      AffineConstraints<double>                                          constraints;
-      AffineConstraints<double>                                          current_constraints;
+      AffineConstraints<double>                                 constraints;
+      AffineConstraints<double>                                 current_constraints;
 
       /**
        * A place to store the latest correction computed by normalize_pressure().

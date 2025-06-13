@@ -437,29 +437,63 @@ namespace aspect
 
         /**
          * Given an additional material model input class as explicitly specified
-         * template argument, returns a pointer to this additional material model
-         * input object if it is used in the current simulation. Ownership
-         * of the pointed-to object remains with the current object.
+         * by the template argument, return a pointer to this additional material model
+         * input object if it is used in the current simulation.
          *
          * If the input does not exist, i.e., if there is no additional input
          * object of the specified type, then a null pointer is returned.
          */
         template <class AdditionalInputType>
-        AdditionalInputType *get_additional_input();
+        std::shared_ptr<AdditionalInputType>
+        get_additional_input_object();
 
         /**
          * A version of the previous function that is used when the object
          * being queried is `const`.
          */
         template <class AdditionalInputType>
-        const AdditionalInputType *get_additional_input() const;
+        std::shared_ptr<const AdditionalInputType>
+        get_additional_input_object() const;
+
+        /**
+         * @deprecated This is a version of the functions above that returns a bare pointer,
+         * rather than a managed pointer object. This function is deprecated,
+         * use the functions above.
+         */
+        template <class AdditionalInputType>
+        DEAL_II_DEPRECATED
+        AdditionalInputType *
+        get_additional_input();
+
+        /**
+         * @deprecated This is a version of the functions above that returns a bare pointer,
+         * rather than a managed pointer object. This function is deprecated,
+         * use the functions above.
+         */
+        template <class AdditionalInputType>
+        DEAL_II_DEPRECATED
+        const AdditionalInputType *
+        get_additional_input() const;
+
+        /**
+         * Given an additional material model input class as explicitly specified
+         * by the template argument, return whether the current object stores
+         * such an additional material model input object. If so, the
+         * get_additional_input_object() function will return a non-null pointer.
+         *
+         * If the input does not exist, i.e., if there is no additional input
+         * object of the specified type, then this function will return false.
+         */
+        template <class AdditionalInputType>
+        bool
+        has_additional_input_object() const;
 
         /**
          * Vector of shared pointers to additional material model input
          * objects that can be added to MaterialModelInputs. By default,
          * no inputs are added.
          */
-        std::vector<std::unique_ptr<AdditionalMaterialInputs<dim>>> additional_inputs;
+        std::vector<std::shared_ptr<AdditionalMaterialInputs<dim>>> additional_inputs;
     };
 
 
@@ -618,23 +652,61 @@ namespace aspect
          * objects that can then be added to MaterialModelOutputs. By default,
          * no outputs are added.
          */
-        std::vector<std::unique_ptr<AdditionalMaterialOutputs<dim>>> additional_outputs;
+        std::vector<std::shared_ptr<AdditionalMaterialOutputs<dim>>> additional_outputs;
 
         /**
          * Given an additional material model output class as explicitly specified
-         * template argument, returns a pointer to this additional material model
+         * by the template argument, return a pointer to this additional material model
          * output object if it is used in the current simulation.
          * The output can then be filled in the MaterialModels::Interface::evaluate()
-         * function. If the output does not exist, a null pointer is returned.
+         * function.
+         *
+         * If the output does not exist, a null pointer is returned.
          */
         template <class AdditionalOutputType>
-        AdditionalOutputType *get_additional_output();
+        std::shared_ptr<AdditionalOutputType>
+        get_additional_output_object();
 
         /**
-         * Constant version of get_additional_output() returning a const pointer.
+         * Constant version of get_additional_output_object()
+         * returning a const pointer.
          */
         template <class AdditionalOutputType>
-        const AdditionalOutputType *get_additional_output() const;
+        std::shared_ptr<const AdditionalOutputType>
+        get_additional_output_object() const;
+
+        /**
+         * @deprecated This is a version of the functions above that returns a bare pointer,
+         * rather than a managed pointer object. This function is deprecated,
+         * use the functions above.
+         */
+        template <class AdditionalOutputType>
+        DEAL_II_DEPRECATED
+        AdditionalOutputType *
+        get_additional_output();
+
+        /**
+         * @deprecated This is a version of the functions above that returns a bare pointer,
+         * rather than a managed pointer object. This function is deprecated,
+         * use the functions above.
+         */
+        template <class AdditionalOutputType>
+        DEAL_II_DEPRECATED
+        const AdditionalOutputType *
+        get_additional_output() const;
+
+        /**
+         * Given an additional material model output class as explicitly specified
+         * by the template argument, return whether the current object stores
+         * such an additional material model output object. If so, the
+         * get_additional_output_object() function will return a non-null pointer.
+         *
+         * If the output does not exist, i.e., if there is no additional output
+         * object of the specified type, then this function will return false.
+         */
+        template <class AdditionalInputType>
+        bool
+        has_additional_output_object() const;
 
         /**
          * Steal the additional outputs from @p other. The destination (@p
@@ -1454,58 +1526,118 @@ namespace aspect
 
     template <int dim>
     template <class AdditionalInputType>
-    AdditionalInputType *MaterialModelInputs<dim>::get_additional_input()
+    std::shared_ptr<AdditionalInputType>
+    MaterialModelInputs<dim>::get_additional_input_object()
     {
       for (unsigned int i=0; i<additional_inputs.size(); ++i)
-        {
-          AdditionalInputType *result = dynamic_cast<AdditionalInputType *> (additional_inputs[i].get());
-          if (result)
-            return result;
-        }
+        if (dynamic_cast<AdditionalInputType *> (additional_inputs[i].get()))
+          return std::dynamic_pointer_cast<AdditionalInputType>(additional_inputs[i]);
+
       return nullptr;
     }
 
 
     template <int dim>
     template <class AdditionalInputType>
-    const AdditionalInputType *MaterialModelInputs<dim>::get_additional_input() const
+    std::shared_ptr<const AdditionalInputType>
+    MaterialModelInputs<dim>::get_additional_input_object() const
     {
       for (unsigned int i=0; i<additional_inputs.size(); ++i)
-        {
-          const AdditionalInputType *result = dynamic_cast<const AdditionalInputType *> (additional_inputs[i].get());
-          if (result)
-            return result;
-        }
+        if (dynamic_cast<AdditionalInputType *> (additional_inputs[i].get()))
+          return std::dynamic_pointer_cast<const AdditionalInputType>(additional_inputs[i]);
+
       return nullptr;
     }
 
 
     template <int dim>
     template <class AdditionalOutputType>
-    AdditionalOutputType *MaterialModelOutputs<dim>::get_additional_output()
+    std::shared_ptr<AdditionalOutputType>
+    MaterialModelOutputs<dim>::get_additional_output_object()
     {
       for (unsigned int i=0; i<additional_outputs.size(); ++i)
-        {
-          AdditionalOutputType *result = dynamic_cast<AdditionalOutputType *> (additional_outputs[i].get());
-          if (result)
-            return result;
-        }
+        if (dynamic_cast<AdditionalOutputType *> (additional_outputs[i].get()))
+          return std::dynamic_pointer_cast<AdditionalOutputType>(additional_outputs[i]);
+
       return nullptr;
     }
 
 
     template <int dim>
     template <class AdditionalOutputType>
-    const AdditionalOutputType *MaterialModelOutputs<dim>::get_additional_output() const
+    std::shared_ptr<const AdditionalOutputType>
+    MaterialModelOutputs<dim>::get_additional_output_object() const
     {
       for (unsigned int i=0; i<additional_outputs.size(); ++i)
-        {
-          const AdditionalOutputType *result = dynamic_cast<const AdditionalOutputType *> (additional_outputs[i].get());
-          if (result)
-            return result;
-        }
+        if (dynamic_cast<const AdditionalOutputType *> (additional_outputs[i].get()))
+          return std::dynamic_pointer_cast<const AdditionalOutputType>(additional_outputs[i]);
+
       return nullptr;
     }
+
+
+    // The following four functions are deprecated:
+    template <int dim>
+    template <class AdditionalInputType>
+    AdditionalInputType *
+    MaterialModelInputs<dim>::get_additional_input()
+    {
+      return get_additional_input_object<AdditionalInputType>().get();
+    }
+
+
+    template <int dim>
+    template <class AdditionalInputType>
+    const AdditionalInputType *
+    MaterialModelInputs<dim>::get_additional_input() const
+    {
+      return get_additional_input_object<AdditionalInputType>().get();
+    }
+
+
+    template <int dim>
+    template <class AdditionalOutputType>
+    AdditionalOutputType *
+    MaterialModelOutputs<dim>::get_additional_output()
+    {
+      return get_additional_output_object<AdditionalOutputType>().get();
+    }
+
+
+    template <int dim>
+    template <class AdditionalOutputType>
+    const AdditionalOutputType *
+    MaterialModelOutputs<dim>::get_additional_output() const
+    {
+      return get_additional_output_object<AdditionalOutputType>().get();
+    }
+
+
+    template <int dim>
+    template <class AdditionalInputType>
+    bool
+    MaterialModelInputs<dim>::has_additional_input_object() const
+    {
+      for (unsigned int i=0; i<additional_inputs.size(); ++i)
+        if (dynamic_cast<AdditionalInputType *> (additional_inputs[i].get()))
+          return true;
+
+      return false;
+    }
+
+
+    template <int dim>
+    template <class AdditionalOutputType>
+    bool
+    MaterialModelOutputs<dim>::has_additional_output_object() const
+    {
+      for (unsigned int i=0; i<additional_outputs.size(); ++i)
+        if (dynamic_cast<const AdditionalOutputType *> (additional_outputs[i].get()))
+          return true;
+
+      return false;
+    }
+
 
 
     template <int dim>

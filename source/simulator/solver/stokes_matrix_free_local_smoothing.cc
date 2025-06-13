@@ -335,6 +335,7 @@ namespace aspect
 
     // Store viscosity tables and other data into the active level matrix-free objects.
     stokes_matrix.set_cell_data(active_cell_data);
+    BT_block.set_cell_data(active_cell_data);
 
     if (this->get_parameters().n_expensive_stokes_solver_steps > 0)
       {
@@ -451,7 +452,7 @@ namespace aspect
           MaterialModel::MaterialModelOutputs<dim> out(fe_values.n_quadrature_points, this->introspection().n_compositional_fields);
           this->get_newton_handler().create_material_model_outputs(out);
           if (this->get_parameters().enable_elasticity &&
-              out.template get_additional_output<MaterialModel::ElasticOutputs<dim>>() == nullptr)
+              out.template has_additional_output_object<MaterialModel::ElasticOutputs<dim>>() == false)
             out.additional_outputs.push_back(std::make_unique<MaterialModel::ElasticOutputs<dim>>(out.n_evaluation_points()));
 
           const unsigned int n_cells = stokes_matrix.get_matrix_free()->n_cell_batches();
@@ -491,15 +492,15 @@ namespace aspect
                          ExcMessage("Invalid strain_rate in the MaterialModelInputs. This is likely because it was "
                                     "not filled by the caller."));
 
-                  const MaterialModel::MaterialModelDerivatives<dim> *derivatives
-                    = out.template get_additional_output<MaterialModel::MaterialModelDerivatives<dim>>();
+                  const std::shared_ptr<const MaterialModel::MaterialModelDerivatives<dim>> derivatives
+                    = out.template get_additional_output_object<MaterialModel::MaterialModelDerivatives<dim>>();
 
                   Assert(derivatives != nullptr,
                          ExcMessage ("Error: The Newton method requires the material to "
                                      "compute derivatives."));
 
-                  const MaterialModel::ElasticOutputs<dim> *elastic_out
-                    = out.template get_additional_output<MaterialModel::ElasticOutputs<dim>>();
+                  const std::shared_ptr<const MaterialModel::ElasticOutputs<dim>> elastic_out
+                    = out.template get_additional_output_object<MaterialModel::ElasticOutputs<dim>>();
 
                   for (unsigned int q=0; q<n_q_points; ++q)
                     {
@@ -1118,8 +1119,8 @@ namespace aspect
     solver_control_expensive.enable_history_data();
 
     // create a cheap preconditioner that consists of only a single V-cycle
-    const internal::BlockSchurGMGPreconditioner<StokesMatrixType, ABlockMatrixType, SchurComplementMatrixType, GMGPreconditioner, GMGPreconditioner>
-    preconditioner_cheap (stokes_matrix, A_block_matrix, Schur_complement_block_matrix,
+    const internal::BlockSchurGMGPreconditioner<StokesMatrixType, ABlockMatrixType, BTBlockOperatorType,SchurComplementMatrixType, GMGPreconditioner, GMGPreconditioner>
+    preconditioner_cheap (stokes_matrix, A_block_matrix, BT_block, Schur_complement_block_matrix,
                           prec_A, prec_Schur,
                           /*do_solve_A*/false,
                           /*do_solve_Schur*/false,
@@ -1128,8 +1129,9 @@ namespace aspect
                           this->get_parameters().linear_solver_S_block_tolerance);
 
     // create an expensive preconditioner that solves for the A block with CG
-    const internal::BlockSchurGMGPreconditioner<StokesMatrixType, ABlockMatrixType, SchurComplementMatrixType, GMGPreconditioner, GMGPreconditioner>
-    preconditioner_expensive (stokes_matrix, A_block_matrix, Schur_complement_block_matrix,
+    const internal::BlockSchurGMGPreconditioner<StokesMatrixType, ABlockMatrixType, BTBlockOperatorType, SchurComplementMatrixType, GMGPreconditioner, GMGPreconditioner>
+    preconditioner_expensive (stokes_matrix, A_block_matrix, BT_block,
+                              Schur_complement_block_matrix,
                               prec_A, prec_Schur,
                               /*do_solve_A*/true,
                               /*do_solve_Schur*/true,
@@ -1655,6 +1657,12 @@ namespace aspect
       A_block_matrix.initialize(matrix_free, selected);
     }
 
+    //B^T Block matrix
+    {
+      BT_block.clear();
+      BT_block.initialize(matrix_free);
+    }
+
     // Schur complement block matrix
     {
       Schur_complement_block_matrix.clear();
@@ -1799,64 +1807,28 @@ namespace aspect
 
 
   template <int dim, int velocity_degree>
-  const DoFHandler<dim> &
-  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_dof_handler_v () const
+  std::size_t
+  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_dof_handler_memory_consumption() const
   {
-    return dof_handler_v;
+    return dof_handler_v.memory_consumption() + dof_handler_p.memory_consumption() + dof_handler_projection.memory_consumption();
   }
 
 
 
   template <int dim, int velocity_degree>
-  const DoFHandler<dim> &
-  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_dof_handler_p () const
+  std::size_t
+  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_mg_transfer_memory_consumption() const
   {
-    return dof_handler_p;
+    return mg_transfer_A_block.memory_consumption() + mg_transfer_Schur_complement.memory_consumption();
   }
 
 
 
   template <int dim, int velocity_degree>
-  const DoFHandler<dim> &
-  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_dof_handler_projection () const
+  std::size_t
+  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_constraint_memory_consumption() const
   {
-    return dof_handler_projection;
-  }
-
-
-
-  template <int dim, int velocity_degree>
-  const AffineConstraints<double> &
-  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_constraints_v() const
-  {
-    return constraints_v;
-  }
-
-
-
-  template <int dim, int velocity_degree>
-  const AffineConstraints<double> &
-  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_constraints_p() const
-  {
-    return constraints_p;
-  }
-
-
-
-  template <int dim, int velocity_degree>
-  const MGTransferMF<dim,GMGNumberType> &
-  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_mg_transfer_A() const
-  {
-    return mg_transfer_A_block;
-  }
-
-
-
-  template <int dim, int velocity_degree>
-  const MGTransferMF<dim,GMGNumberType> &
-  StokesMatrixFreeHandlerLocalSmoothingImplementation<dim, velocity_degree>::get_mg_transfer_S() const
-  {
-    return mg_transfer_Schur_complement;
+    return constraints_v.memory_consumption() + constraints_p.memory_consumption();
   }
 
 
