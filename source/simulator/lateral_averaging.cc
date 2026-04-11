@@ -875,6 +875,10 @@ namespace aspect
           {
             functors.push_back(std::make_unique<FunctorDepthAverageDensity<dim>>());
           }
+        else if (property_name == "density")
+          {
+            functors.push_back(std::make_unique<FunctorDepthAverageDensity<dim>>());
+          }
         else if (this->introspection().compositional_name_exists(property_name))
           {
             const unsigned int c =
