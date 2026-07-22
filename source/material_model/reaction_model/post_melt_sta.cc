@@ -40,7 +40,6 @@ namespace aspect
       {
         for (unsigned int i=0; i < in.n_evaluation_points(); ++i)
           {
-            const double depth = this->get_geometry_model().depth(in.position[i]);
             const double pressure    = this->get_adiabatic_conditions().pressure(in.position[i]);//eos_in.pressure[i];
             const double temperature = in.temperature[i];
             // compute melt fraction
@@ -97,6 +96,8 @@ namespace aspect
       void
       PostMeltSta<dim>::declare_parameters (ParameterHandler &prm)
       {
+        // call declare_parameters of the katz2003_mantle_melting model to get the solidus and melt fraction parameters
+        ReactionModel::Katz2003MantleMelting<dim>::declare_parameters(prm);
         prm.declare_entry ("D1", "976.0",
                             Patterns::Double (),
                             "Constant parameter in the quadratic "
@@ -139,6 +140,13 @@ namespace aspect
       void
       PostMeltSta<dim>::parse_parameters (ParameterHandler &prm)
       {
+        // initialize simulator access of the katz2003_mantle_melting model
+        katz2003_model.initialize_simulator(this->get_simulator());
+        
+        // call parse_parameters of the katz2003_mantle_melting model to get the solidus and melt fraction parameters
+        katz2003_model.parse_parameters(prm);
+
+        // 
         D1              = prm.get_double ("D1");
         D2              = prm.get_double ("D2");
         D3              = prm.get_double ("D3");
