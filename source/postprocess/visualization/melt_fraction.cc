@@ -41,6 +41,71 @@ namespace aspect
       {}
 
 
+      template <int dim>
+      double
+      MeltFraction<dim>::
+      melt_fraction (const double temperature,
+                     const double pressure,
+                     const std::string &melting_model) const
+      {
+        if (melting_model == "peridotite")
+          {
+            // anhydrous melting of peridotite after Katz, 2003
+            const double T_solidus  = A1 + 273.15
+                                      + A2 * pressure
+                                      + A3 * pressure * pressure;
+            const double T_lherz_liquidus = B1 + 273.15
+                                            + B2 * pressure
+                                            + B3 * pressure * pressure;
+            const double T_liquidus = C1 + 273.15
+                                      + C2 * pressure
+                                      + C3 * pressure * pressure;
+
+            // melt fraction for peridotite with clinopyroxene
+            double peridotite_melt_fraction;
+            if (temperature < T_solidus || pressure > 1.3e10)
+              peridotite_melt_fraction = 0.0;
+            else if (temperature > T_lherz_liquidus)
+              peridotite_melt_fraction = 1.0;
+            else
+              peridotite_melt_fraction = std::pow((temperature - T_solidus) / (T_lherz_liquidus - T_solidus),beta);
+
+            // melt fraction after melting of all clinopyroxene
+            const double R_cpx = r1 + r2 * std::max(0.0, pressure);
+            const double F_max = M_cpx / R_cpx;
+
+            if (peridotite_melt_fraction > F_max && temperature < T_liquidus)
+              {
+                const double T_max = std::pow(F_max,1/beta) * (T_lherz_liquidus - T_solidus) + T_solidus;
+                peridotite_melt_fraction = F_max + (1 - F_max) * std::pow((temperature - T_max) / (T_liquidus - T_max),beta);
+              }
+
+            return peridotite_melt_fraction;
+          }
+        else if (melting_model == "pyroxenite")
+          {
+            // melting of pyroxenite after Sobolev et al., 2011
+            const double T_melting = D1 + 273.15
+                                     + D2 * pressure
+                                     + D3 * pressure * pressure;
+
+            const double discriminant = E1*E1/(E2*E2*4) + (temperature-T_melting)/E2;
+
+            double pyroxenite_melt_fraction;
+            if (temperature < T_melting || pressure > 1.3e10)
+              pyroxenite_melt_fraction = 0.0;
+            else if (discriminant < 0)
+              pyroxenite_melt_fraction = 0.5429;
+            else
+              pyroxenite_melt_fraction = -E1/(2*E2) - std::sqrt(discriminant);
+            return pyroxenite_melt_fraction;
+          }
+        // [Potential extension] Add more melting models here as additional else if statements,
+        // where the melting model name is checked and the corresponding melt fraction calculation is performed.
+        else
+          AssertThrow(false, ExcMessage("The melting model '" + melting_model + "' is not implemented. "
+                                        "Please choose either 'peridotite' or 'pyroxenite'."));
+      }
 
       template <int dim>
       void
@@ -82,62 +147,24 @@ namespace aspect
               for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
                 composition[c] = input_data.solution_values[q][this->introspection().component_indices.compositional_fields[c]];
 
-              // anhydrous melting of peridotite after Katz, 2003
-              const double T_solidus  = A1 + 273.15
-                                        + A2 * pressure
-                                        + A3 * pressure * pressure;
-              const double T_lherz_liquidus = B1 + 273.15
-                                              + B2 * pressure
-                                              + B3 * pressure * pressure;
-              const double T_liquidus = C1 + 273.15
-                                        + C2 * pressure
-                                        + C3 * pressure * pressure;
-
-              // melt fraction for peridotite with clinopyroxene
-              double peridotite_melt_fraction;
-              if (temperature < T_solidus || pressure > 1.3e10)
-                peridotite_melt_fraction = 0.0;
-              else if (temperature > T_lherz_liquidus)
-                peridotite_melt_fraction = 1.0;
-              else
-                peridotite_melt_fraction = std::pow((temperature - T_solidus) / (T_lherz_liquidus - T_solidus),beta);
-
-              // melt fraction after melting of all clinopyroxene
-              const double R_cpx = r1 + r2 * std::max(0.0, pressure);
-              const double F_max = M_cpx / R_cpx;
-
-              if (peridotite_melt_fraction > F_max && temperature < T_liquidus)
+              // Calculate the melt fraction for the background material (peridotite)
+              const double peridotite_melt_fraction = melt_fraction(temperature, pressure,"peridotite");
+              // Calculate the melt fraction for the non peridotite compositional field
+              double total_melt_fraction = 0.0;
+              double total_comp_fraction = 0.0;
+              for (unsigned int mc=0; mc<melting_model.size(); ++mc)
                 {
-                  const double T_max = std::pow(F_max,1/beta) * (T_lherz_liquidus - T_solidus) + T_solidus;
-                  peridotite_melt_fraction = F_max + (1 - F_max) * std::pow((temperature - T_max) / (T_liquidus - T_max),beta);
+                  const unsigned int comp_index = this->introspection().compositional_index_for_name(melting_model[mc]);
+                  const double comp_melt_fraction = melt_fraction(temperature, pressure, melting_model[mc]);
+                  total_melt_fraction += composition[comp_index] * comp_melt_fraction;
+                  total_comp_fraction += composition[comp_index];
                 }
+              if (total_comp_fraction > 1.0)
+                AssertThrow(false, ExcMessage("The total fraction of non-peridotite compositional fields exceeds 1.0. "
+                                              "Please check the input file and ensure that the sum of all compositional fields is less than or equal to 1.0."));
+              total_melt_fraction += (1.0 - total_comp_fraction) * peridotite_melt_fraction;
 
-              // melting of pyroxenite after Sobolev et al., 2011
-              const double T_melting = D1 + 273.15
-                                       + D2 * pressure
-                                       + D3 * pressure * pressure;
-
-              const double discriminant = E1*E1/(E2*E2*4) + (temperature-T_melting)/E2;
-
-              double pyroxenite_melt_fraction;
-              if (temperature < T_melting || pressure > 1.3e10)
-                pyroxenite_melt_fraction = 0.0;
-              else if (discriminant < 0)
-                pyroxenite_melt_fraction = 0.5429;
-              else
-                pyroxenite_melt_fraction = -E1/(2*E2) - std::sqrt(discriminant);
-
-              double melt_fraction;
-              if (this->introspection().compositional_name_exists("pyroxenite"))
-                {
-                  const unsigned int pyroxenite_index = this->introspection().compositional_index_for_name("pyroxenite");
-                  melt_fraction = composition[pyroxenite_index] * pyroxenite_melt_fraction +
-                                  (1-composition[pyroxenite_index]) * peridotite_melt_fraction;
-                }
-              else
-                melt_fraction = peridotite_melt_fraction;
-
-              computed_quantities[q](0) = melt_fraction;
+              computed_quantities[q](0) = total_melt_fraction;
             }
       }
 
@@ -268,6 +295,19 @@ namespace aspect
                                  "in the quadratic function that approximates "
                                  "the melt fraction of pyroxenite. "
                                  "$\\frac{^\\circ\\text{C}}{\\text{Pa}^2}$.");
+              // [Potential extension] Declare more parameters for additional melting models here, if needed.
+
+              // get the list of melting models that are not peridotite
+              prm.declare_entry("List of melting compostions other than peridotite", " ",
+                                Patterns::List(Patterns::Anything()),
+                                "The list of compositional field names for melting composition "
+                                "other than peridotite. Currently, only pyroxenite is implemented. "
+                                "If a new melting model is added, the name of the default input "
+                                "could be changed accordingly. "
+                                "This input must be the same as the name of the corresponding "
+                                "compositional field prescribed in the 'Compositional fields' "
+                                "subsection so the melt fraction postprocessor can identify "
+                                "which compositional field corresponds to which melting model. ");
             }
             prm.leave_subsection();
           }
@@ -304,6 +344,10 @@ namespace aspect
               D3              = prm.get_double ("D3");
               E1              = prm.get_double ("E1");
               E2              = prm.get_double ("E2");
+              // [Potential extension] Parse more parameters for additional melting models here, if needed.
+
+              melting_model   = Utilities::split_string_list(prm.get("List of melting compostions other than peridotite"));
+
             }
             prm.leave_subsection();
           }
@@ -332,14 +376,17 @@ namespace aspect
                                                   "Otherwise, a specific parametrization for batch melting "
                                                   "(as described in the following) will be used. "
                                                   "It does not take into account latent heat. "
-                                                  "If there are no compositional fields, or no fields called 'pyroxenite', "
-                                                  " this postprocessor will visualize the melt fraction of peridotite "
+                                                  "If there are no compositional fields, "
+                                                  "this postprocessor will visualize the melt fraction of peridotite "
                                                   "(calculated using the anhydrous model of Katz, 2003). "
-                                                  "If there is a compositional field called 'pyroxenite', the "
-                                                  "postprocessor assumes that this compositional "
-                                                  "field is the content of pyroxenite, and will visualize "
-                                                  "the melt fraction for a mixture of peridotite and pyroxenite "
-                                                  "(using the melting model of Sobolev, 2011 for pyroxenite). "
+                                                  "If 'multiple_melting_models' is true and there is a compositional "
+                                                  "field called 'melting_comp_1', the postprocessor assumes that "
+                                                  "the melt fracton of this compositional field is determined "
+                                                  "by the chosen melting model that is not peridotite (currently assumed to be "
+                                                  "pyroxenite using the model of Sobolev, 2011.) "
+                                                  "The melt fraction is currently visualized for a mixture of peridotite and pyroxenite. "
+                                                  "Other melt model for the non-peridotite compositional field can be added by adding "
+                                                  "the function melt_fraction_comp_X in melt_fraction.cc. "
                                                   "All the parameters that were used in these calculations "
                                                   "can be changed in the input file, the most relevant maybe "
                                                   "being the mass fraction of Cpx in peridotite in the Katz "
