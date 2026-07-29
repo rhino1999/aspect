@@ -346,7 +346,13 @@ namespace aspect
               E2              = prm.get_double ("E2");
               // [Potential extension] Parse more parameters for additional melting models here, if needed.
 
-              melting_model   = Utilities::split_string_list(prm.get("List of melting compostions other than peridotite"));
+              melting_model = Utilities::split_string_list(prm.get("List of melting compositions other than peridotite"));
+
+              for (const auto &model_name : melting_model)
+                AssertThrow(model_name == "pyroxenite",
+                            ExcMessage("The melting model '" + model_name + "' is not implemented. "
+                                       "Please choose either 'peridotite' or 'pyroxenite'."));
+                // A new AsserThrow statement can be added here for each new melting model that is implemented.
 
             }
             prm.leave_subsection();
@@ -385,9 +391,9 @@ namespace aspect
                                                   "assumed to be pyroxenite using the model of Sobolev, 2011.) "
                                                   "The melt fraction is visualized for a mixture of peridotite and additional "
                                                   "compositional fields that have an associated melting model. It "
-                                                  "assumes that the melting of different composition do not interact "
+                                                  "assumes that the melting of different composition does not interact "
                                                   "with each other."
-                                                  "Other melt model for the non-peridotite compositional field can be "
+                                                  "Other melt models for the non-peridotite compositional field can be "
                                                   "added by adding a new instance of the melt_fraction function. "
                                                   "All the parameters that were used in these calculations "
                                                   "can be changed in the input file, the most relevant maybe "
