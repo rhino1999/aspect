@@ -103,8 +103,10 @@ namespace aspect
         // [Potential extension] Add more melting models here as additional else if statements,
         // where the melting model name is checked and the corresponding melt fraction calculation is performed.
         else
-          AssertThrow(false, ExcMessage("The melting model '" + melting_model + "' is not implemented. "
-                                        "Please choose either 'peridotite' or 'pyroxenite'."));
+          {
+            // this should never happen because we check for implemented melting models in parse_parameters
+            return 0.0;
+          }
       }
 
       template <int dim>
@@ -298,7 +300,7 @@ namespace aspect
               // [Potential extension] Declare more parameters for additional melting models here, if needed.
 
               // get the list of melting models that are not peridotite
-              prm.declare_entry("List of melting compostions other than peridotite", " ",
+              prm.declare_entry("List of melting compositions other than peridotite", " ",
                                 Patterns::List(Patterns::Anything()),
                                 "The list of compositional field names for melting composition "
                                 "other than peridotite. Currently, only pyroxenite is implemented. "
@@ -347,12 +349,15 @@ namespace aspect
               // [Potential extension] Parse more parameters for additional melting models here, if needed.
 
               melting_model = Utilities::split_string_list(prm.get("List of melting compositions other than peridotite"));
-
+              // check if the melting models are implemented
+              // If a new melting model is added, it should be added to the list of implemented models below.
               for (const auto &model_name : melting_model)
-                AssertThrow(model_name == "pyroxenite",
-                            ExcMessage("The melting model '" + model_name + "' is not implemented. "
-                                       "Please choose either 'peridotite' or 'pyroxenite'."));
-                // A new AsserThrow statement can be added here for each new melting model that is implemented.
+                {
+                  AssertThrow(this->introspection().compositional_name_exists(model_name),
+                              ExcMessage("The compositional field '" + model_name + "' does not exist. "
+                                         "Please ensure that the name of the compositional field matches "
+                                         "the name of the melting model specified in 'List of melting compositions other than peridotite'."));
+                }
 
             }
             prm.leave_subsection();
@@ -382,10 +387,10 @@ namespace aspect
                                                   "Otherwise, a specific parametrization for batch melting "
                                                   "(as described in the following) will be used. "
                                                   "It does not take into account latent heat. "
-                                                  "If 'List of melting compostions other than peridotite' is empty, "
+                                                  "If 'List of melting compositions other than peridotite' is empty, "
                                                   "this postprocessor will visualize the melt fraction of peridotite "
                                                   "(calculated using the anhydrous model of Katz, 2003). "
-                                                  "If 'List of melting compostions other than peridotite' is not empty, "
+                                                  "If 'List of melting compositions other than peridotite' is not empty, "
                                                   "the postprocessor assumes that the melt fracton of this compositional field "
                                                   "is determined by the chosen melting model that is not peridotite (currently "
                                                   "assumed to be pyroxenite using the model of Sobolev, 2011.) "
