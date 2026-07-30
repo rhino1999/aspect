@@ -49,25 +49,41 @@ namespace aspect
                                update_quadrature_points |
                                update_JxW_values);
 
-      std::vector<double> compositional_values(n_q_points);
+      std::vector<double> second_melting_composition_depletion(n_q_points);
+      std::vector<double> peridotite_depletion(n_q_points);
 
-      std::vector<double> local_compositional_integrals (this->n_compositional_fields());
+      std::vector<double> local_second_melting_composition_depletion_integrals (this->n_compositional_fields());
+      std::vector<double> local_peridotite_depletion_integrals (this->n_compositional_fields());
 
-      second_melting_composition_index = this->introspection().compositional_index_for_name("pyroxenite");
-      // std::vector<double> old_second_melting_composition (n_q_points);
       std::vector<double> old_second_melting_composition_depletion (n_q_points);
       std::vector<double> old_peridotite_depletion (n_q_points);
 
-      // compute the integral quantities by quadrature
+      // Compute the melt mass fraction for current time step using P, T solution values and the melt fraction model.
+      // Compare the melt mass fraction at each quadrature point with the corresponding depletion at the previous time 
+      // step to compute the melt fraction increase at the current time step.
+      // Then compute the integral quantities by quadrature
       for (const auto &cell : this->get_dof_handler().active_cell_iterators())
         if (cell->is_locally_owned())
           {
             fe_values.reinit (cell);
 
+            std::vector<double> melting_composition_depletion_index((depletion_field_names.size()-1));
+            for (unsigned int mc=0; mc<(depletion_field_names.size()-1); ++mc)
+              {
+                melting_composition_depletion_index[mc] = this->introspection().compositional_index_for_name(depletion_field_names[mc]);
+              }
+            const unsigned int peridotite_depletion_index = this->introspection().compositional_index_for_name("peridotite_depletion");
+
             for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
               {
+                const double comp_melt_fraction = melt_fraction(temperature, pressure, melting_model[mc]);
                 // learn from heat flux map
-                fe_values[simulator_access.introspection().extractors.compositional_fields[0]].get_function_values (simulator_access.get_old_solution(), old_compositional_values);
+                for (unsigned int mc=0; mc<(depletion_field_names.size()-1); ++mc)
+                  {
+                    fe_values[melting_composition_depletion_index[mc]].get_function_values (simulator_access.get_old_solution(), old_second_melting_composition_depletion);
+                  }
+                fe_values[melting_composition_depletion_index[mc]].get_function_values (simulator_access.get_old_solution(), old_second_melting_composition_depletion);
+                fe_values[peridotite_depletion_index].get_function_values (simulator_access.get_old_solution(), old_peridotite_depletion);
                 fe_values[this->introspection().extractors.compositional_fields[c]].get_function_values (this->get_solution(),
                     compositional_values);
                 for (unsigned int q=0; q<n_q_points; ++q)
