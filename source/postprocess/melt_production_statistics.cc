@@ -33,7 +33,7 @@ namespace aspect
   {
     template <int dim>
     std::pair<std::string,std::string>
-    CompositionStatistics<dim>::execute (TableHandler &statistics)
+    MeltProductionStatistics<dim>::execute (TableHandler &statistics)
     {
       if (this->n_compositional_fields() == 0)
         return {"", ""};
@@ -53,18 +53,21 @@ namespace aspect
 
       std::vector<double> local_compositional_integrals (this->n_compositional_fields());
 
-      std::vector<double> old_temperatures (n_q_points);
+      second_melting_composition_index = this->introspection().compositional_index_for_name("pyroxenite");
+      // std::vector<double> old_second_melting_composition (n_q_points);
+      std::vector<double> old_second_melting_composition_depletion (n_q_points);
+      std::vector<double> old_peridotite_depletion (n_q_points);
 
       // compute the integral quantities by quadrature
       for (const auto &cell : this->get_dof_handler().active_cell_iterators())
         if (cell->is_locally_owned())
           {
             fe_values.reinit (cell);
-            fe_volume_values[simulator_access.introspection().extractors.temperature].get_function_gradients (simulator_access.get_solution(), temperature_gradients);
-            fe_volume_values[simulator_access.introspection().extractors.temperature].get_function_values (simulator_access.get_old_solution(), old_temperatures);
 
             for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
               {
+                // learn from heat flux map
+                fe_values[simulator_access.introspection().extractors.compositional_fields[0]].get_function_values (simulator_access.get_old_solution(), old_compositional_values);
                 fe_values[this->introspection().extractors.compositional_fields[c]].get_function_values (this->get_solution(),
                     compositional_values);
                 for (unsigned int q=0; q<n_q_points; ++q)
@@ -162,13 +165,12 @@ namespace aspect
 {
   namespace Postprocess
   {
-    ASPECT_REGISTER_POSTPROCESSOR(CompositionStatistics,
-                                  "composition statistics",
+    ASPECT_REGISTER_POSTPROCESSOR(MeltProductionStatistics,
+                                  "melt production statistics",
                                   "A postprocessor that computes some statistics about "
-                                  "the compositional fields, if present in this simulation. "
-                                  "In particular, it computes maximal and minimal values of "
-                                  "each field, as well as the total mass contained in this "
-                                  "field as defined by the integral "
-                                  "$m_i(t) = \\int_\\Omega c_i(\\mathbf x,t) \\; \\text{d}x$.")
+                                  "the melt production that is computed using the pressure, "
+                                  "temperature, and other relevant fields. This postprocessor "
+                                  "only keeps track of the depletion associated with melting "
+                                  "and assumes that melting does not affect model's dynamics. ")
   }
 }
