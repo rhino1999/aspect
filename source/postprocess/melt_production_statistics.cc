@@ -35,7 +35,7 @@ namespace aspect
     std::pair<std::string,std::string>
     MeltProductionStatistics<dim>::execute (TableHandler &statistics)
     {
-      if (this->n_compositional_fields() == 0)
+      if (depletion_field_names.size() == 0)
         return {"", ""};
 
       // create a quadrature formula based on the compositional element alone.
@@ -49,14 +49,23 @@ namespace aspect
                                update_quadrature_points |
                                update_JxW_values);
 
-      std::vector<double> second_melting_composition_depletion(n_q_points);
+      // Store the temperature and pressure at each quadrature point for the current time step.
+      std::vector<double> temperatures (n_q_points);
+      std::vector<double> pressures (n_q_points);
+      // Store the depletion of each melting composition at each quadrature point for the current time step.
+      std::vector<std::vector<double>> second_melting_composition_depletion((depletion_field_names.size()-1),n_q_points);
       std::vector<double> peridotite_depletion(n_q_points);
 
-      std::vector<double> local_second_melting_composition_depletion_integrals (this->n_compositional_fields());
-      std::vector<double> local_peridotite_depletion_integrals (this->n_compositional_fields());
-
-      std::vector<double> old_second_melting_composition_depletion (n_q_points);
+      std::vector<double> melting_composition_depletion_index((depletion_field_names.size()-1));
+      for (unsigned int mc=0; mc<(depletion_field_names.size()-1); ++mc)
+          melting_composition_depletion_index[mc] = this->introspection().compositional_index_for_name(depletion_field_names[mc]);
+      
+      // Store the depletion of each melting composition at each quadrature point for the previous time step.
+      std::vector<std::vector<double>> old_second_melting_composition_depletion ((depletion_field_names.size()-1),n_q_points);
       std::vector<double> old_peridotite_depletion (n_q_points);
+
+      // The first element of the vector is always for peridotite depletion, and the rest are for the other melting compositions.
+      std::vector<double> local_depletion_integrals (depletion_field_names.size());
 
       // Compute the melt mass fraction for current time step using P, T solution values and the melt fraction model.
       // Compare the melt mass fraction at each quadrature point with the corresponding depletion at the previous time 
@@ -67,26 +76,37 @@ namespace aspect
           {
             fe_values.reinit (cell);
 
-            std::vector<double> melting_composition_depletion_index((depletion_field_names.size()-1));
-            for (unsigned int mc=0; mc<(depletion_field_names.size()-1); ++mc)
-              {
-                melting_composition_depletion_index[mc] = this->introspection().compositional_index_for_name(depletion_field_names[mc]);
-              }
             const unsigned int peridotite_depletion_index = this->introspection().compositional_index_for_name("peridotite_depletion");
+            fe_values[simulator_access.introspection().extractors.temperature].get_function_values (simulator_access.get_solution(), 
+                                                                                                    temperatures);
+            fe_values[simulator_access.introspection().extractors.pressure].get_function_values (simulator_access.get_solution(), 
+                                                                                                 pressures);
 
             for (unsigned int c=0; c<this->n_compositional_fields(); ++c)
               {
-                const double comp_melt_fraction = melt_fraction(temperature, pressure, melting_model[mc]);
-                // learn from heat flux map
-                for (unsigned int mc=0; mc<(depletion_field_names.size()-1); ++mc)
+                for (unsigned int mc=1; mc<(depletion_field_names.size()-1); ++mc)
                   {
-                    fe_values[melting_composition_depletion_index[mc]].get_function_values (simulator_access.get_old_solution(), old_second_melting_composition_depletion);
+                    old_second_melting_composition_depletion[mc].resize(n_q_points);
+                    fe_values[melting_composition_depletion_index[mc]].get_function_values (simulator_access.get_old_solution(), 
+                                                                                            old_second_melting_composition_depletion[mc]);
                   }
-                fe_values[melting_composition_depletion_index[mc]].get_function_values (simulator_access.get_old_solution(), old_second_melting_composition_depletion);
                 fe_values[peridotite_depletion_index].get_function_values (simulator_access.get_old_solution(), old_peridotite_depletion);
                 fe_values[this->introspection().extractors.compositional_fields[c]].get_function_values (this->get_solution(),
                     compositional_values);
                 for (unsigned int q=0; q<n_q_points; ++q)
+                  // Loop over all depletion fields to compute the melt fraction increase at each quadrature point.
+                  for (unsigned int mc=1; mc<(depletion_field_names.size()-1); ++mc)
+                    {
+                      // Find the position of "_depletion" and extract the melting model name from the depletion field name
+                      size_t pos = depletion_field_names[mc].find("_depletion");
+                      if (pos != std::string::npos) 
+                          melting_model_names[mc] = depletion_field_names[mc].substr(0, pos); // Extracts everything before "_depletion"
+                      else
+                          Assert(false, ExcMessage("Could not find '_depletion' in depletion field name."));
+                      const double comp_melt_fraction = melt_fraction(temperatures[q], pressures[q], melting_model_names[mc]);
+                      second_melting_composition_depletion_change[mc][q] = comp_melt_fraction * compositional_values[q]- old_second_melting_composition_depletion[mc][q];
+
+                    }
                   local_compositional_integrals[c] += compositional_values[q]*fe_values.JxW(q);
               }
           }
